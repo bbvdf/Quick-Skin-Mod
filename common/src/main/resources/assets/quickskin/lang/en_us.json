@@ -443,5 +443,14 @@
   "quickskin.server.missing_mod_notice": "This server uses Quick Skin for custom skins and capes. Install the mod to see them and to wear your own.",
   "_comment_favourites_fan": "=== Favourites Fan ===",
   "quickskin.fan.no_favourites": "Mark skins with ★ in the skin menu to see them here",
-  "quickskin.fan.cooldown": "You can change your skin again in %s s"
+  "quickskin.fan.cooldown": "You can change your skin again in %s s",
+  "_comment_elyby_library": "=== Ely.by Library ===",
+  "quickskin.button.elyby_library": "Ely.by Library",
+  "quickskin.elyby.title": "Ely.by Library",
+  "quickskin.elyby.loading": "Loading the Ely.by catalog...",
+  "quickskin.elyby.error": "Could not load the Ely.by catalog. Check your network and try again.",
+  "quickskin.elyby.empty": "No skins on this page",
+  "quickskin.elyby.applying": "Downloading and applying...",
+  "quickskin.elyby.previous": "Previous",
+  "quickskin.elyby.next": "Next"
 }

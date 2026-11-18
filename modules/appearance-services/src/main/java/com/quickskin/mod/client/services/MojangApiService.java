@@ -358,7 +358,7 @@ public final class MojangApiService {
      * Accept historical HTTP payloads only for the exact texture hosts Quick Skin reads, then
      * upgrade them: Mojang's texture CDN, and Ely.by's storage and per-nickname endpoints.
      */
-    private static URL validateTextureUrl(String value) throws Exception {
+    static URL validateTextureUrl(String value) throws Exception {
         if (value == null || value.length() > 512) {
             throw new IOException("Invalid skin texture URL");
         }
