@@ -12,6 +12,7 @@ import com.quickskin.mod.common.util.HashUtil;
 import com.quickskin.mod.common.util.SafeImageReader;
 import com.quickskin.mod.platform.MinecraftTextureUploads;
 import com.quickskin.mod.platform.QuickSkinInfo;
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -438,22 +439,17 @@ public class ElyByCatalogScreen extends Screen {
     //?} else {
     @Override
     public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean focused) {
-        QuickSkinInfo.LOGGER.info("Ely.by catalog raw click x={} y={} button={} focused={}",
-                event.x(), event.y(), GuiCompat.mouseButton(event), focused);
         return clickCatalog(GuiCompat.mouseX(event), GuiCompat.mouseY(event),
                 GuiCompat.mouseButton(event)) || super.mouseClicked(event, focused);
     }
     //?}
 
     private boolean clickCatalog(double mouseX, double mouseY, int button) {
-        QuickSkinInfo.LOGGER.info("Ely.by catalog click x={} y={} button={} loading={} applying={} grid=({},{} {}px {}x{}) screen={}/{}",
-                mouseX, mouseY, button, loading, applying, gridX, gridY, tile, columns, ROWS,
-                screenIndex + 1, screenCount());
-        if (button != 0 || loading || applying) {
+        // 26.3 numbers the mouse buttons 1-based; the shared constant is the only safe test
+        if (button != InputConstants.MOUSE_BUTTON_LEFT || loading || applying) {
             return false;
         }
         int index = tileAt(mouseX, mouseY);
-        QuickSkinInfo.LOGGER.info("Ely.by catalog click at {},{} -> tile {}", mouseX, mouseY, index);
         if (index < 0) {
             return false;
         }
