@@ -12,6 +12,7 @@ import com.quickskin.mod.common.util.HashUtil;
 import com.quickskin.mod.common.util.SafeImageReader;
 import com.quickskin.mod.platform.MinecraftTextureUploads;
 import com.quickskin.mod.platform.QuickSkinInfo;
+import com.mojang.blaze3d.platform.NativeImage;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
@@ -25,12 +26,10 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import com.mojang.blaze3d.platform.NativeImage;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -39,42 +38,52 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Browses the public Ely.by skin catalog inside the game: 40 skins per page in a grid of faces,
- * paged back and forth. Clicking a skin downloads it, adds it to the local library and puts it on
- * the player, so the choice behaves exactly like one picked from the skin column.
+ * Browses the public Ely.by skin catalog inside the game.
+ * <p>
+ * The catalog answers 40 entries per page, far more than a readable grid holds, so each catalog
+ * page is shown as several screens of three rows. Paging walks those screens first and only
+ * fetches another catalog page at either edge. Each tile draws the skin as a standing figure big
+ * enough to tell one skin from another; clicking one downloads it, adds it to the local library
+ * and puts it on the player.
  */
 @Environment(EnvType.CLIENT)
 public class ElyByCatalogScreen extends Screen {
 
-    private static final int COLUMNS = 8;
-    private static final int ROWS = 5;
-    private static final int TILE = 36;
-    private static final int FACE = 30;
-    private static final int GAP = 6;
-    private static final int HEADER = 46;
-    private static final int FOOTER = 42;
-    private static final int GRID_WIDTH = COLUMNS * TILE + (COLUMNS - 1) * GAP;
-    private static final int GRID_HEIGHT = ROWS * TILE + (ROWS - 1) * GAP;
+    private static final int ROWS = 3;
+    private static final int MAX_COLUMNS = 6;
+    private static final int MIN_TILE = 40;
+    private static final int MAX_TILE = 96;
+    private static final int GAP = 8;
+    private static final int HEADER = 42;
+    private static final int FOOTER = 50;
     private static final int TEXT_COLOR = 0xFFF0F0F0;
     private static final int MUTED_COLOR = 0xFFA0A0A0;
-    private static final int TILE_BACKGROUND = 0x60000000;
-    private static final int TILE_HOVER = 0xC0FFFFFF;
+    private static final int TILE_BACKGROUND = 0x50000000;
+    private static final int TILE_HOVER = 0xD0FFFFFF;
 
     private final Screen parent;
 
-    private int page = 1;
-    private int lastPage = 1;
+    /** Grid geometry, recomputed from the window for every init(). */
+    private int columns = 5;
+    private int tile = 56;
+    private int gridX;
+    private int gridY = HEADER;
+    private int gridWidth;
+    private int gridHeight;
+
+    private int catalogPage = 1;
+    private int lastCatalogPage = 1;
     private int totalItems = 0;
+    /** Which screen of the current catalog page is shown, 0-based. */
+    private int screenIndex = 0;
+
     private boolean loading;
     private boolean failed;
     private boolean applying;
-    private List<CatalogItem> items = List.of();
+    private List<CatalogItem> pageItems = List.of();
 
-    /** Registered face textures by catalog id, and the ids whose download is in flight. */
     private final Map<Long, Identifier> faces = new HashMap<>();
-    /** The texture's pixel size by catalog id, so a figure is drawn from the right layout. */
     private final Map<Long, int[]> faceSizes = new HashMap<>();
-    /** The original PNG of each loaded face, so applying a skin never downloads it twice. */
     private final Map<Long, byte[]> faceBytes = new HashMap<>();
     private final Set<Long> requested = new HashSet<>();
 
@@ -92,60 +101,105 @@ public class ElyByCatalogScreen extends Screen {
 
     @Override
     protected void init() {
-        int buttonY = this.height - FOOTER + 12;
-        int buttonWidth = 80;
+        layoutGrid();
+
+        int buttonY = this.height - FOOTER + 14;
+        int buttonWidth = 70;
         int center = this.width / 2;
 
         previousButton = Button.builder(Component.translatable("quickskin.elyby.previous"),
-                        button -> changePage(-1))
-                .bounds(center - buttonWidth - 8, buttonY, buttonWidth, 20)
+                        button -> changeScreen(-1))
+                .bounds(center - buttonWidth - 6, buttonY, buttonWidth, 20)
                 .build();
         addRenderableWidget(previousButton);
 
         nextButton = Button.builder(Component.translatable("quickskin.elyby.next"),
-                        button -> changePage(1))
-                .bounds(center + 8, buttonY, buttonWidth, 20)
+                        button -> changeScreen(1))
+                .bounds(center + 6, buttonY, buttonWidth, 20)
                 .build();
         addRenderableWidget(nextButton);
 
         addRenderableWidget(Button.builder(Component.translatable("quickskin.button.close"),
                         button -> onClose())
-                .bounds(this.width - 88, buttonY, 80, 20)
+                .bounds(this.width - 86, buttonY, 76, 20)
                 .build());
 
         updatePagingButtons();
-        if (items.isEmpty() && !loading) {
-            loadPage(1);
+        if (pageItems.isEmpty() && !loading) {
+            loadPage(1, 0);
         }
     }
 
-    private void changePage(int delta) {
-        if (loading || page + delta < 1) {
-            return;
-        }
-        int target = page + delta;
-        if (lastPage > 0 && target > lastPage) {
-            return;
-        }
-        loadPage(target);
+    /**
+     * Size the grid to the window: three rows, as many columns as fit, and a tile big enough to
+     * show a whole figure without pushing the paging buttons over it.
+     */
+    private void layoutGrid() {
+        int availableWidth = Math.max(200, this.width - 32);
+        int availableHeight = Math.max(120, this.height - HEADER - FOOTER);
+        columns = Math.max(3, Math.min(MAX_COLUMNS, (availableWidth + GAP) / (MIN_TILE + GAP)));
+        int byWidth = (availableWidth - (columns - 1) * GAP) / columns;
+        int byHeight = (availableHeight - (ROWS - 1) * GAP) / ROWS;
+        tile = Math.max(MIN_TILE, Math.min(MAX_TILE, Math.min(byWidth, byHeight)));
+        gridWidth = columns * tile + (columns - 1) * GAP;
+        gridHeight = ROWS * tile + (ROWS - 1) * GAP;
+        gridX = (this.width - gridWidth) / 2;
+        gridY = HEADER;
     }
 
-    private void loadPage(int target) {
+    private int perScreen() {
+        return columns * ROWS;
+    }
+
+    private int screenCount() {
+        return Math.max(1, (pageItems.size() + perScreen() - 1) / perScreen());
+    }
+
+    /** The entries of the current screen. */
+    private List<CatalogItem> visibleItems() {
+        int from = screenIndex * perScreen();
+        if (from >= pageItems.size()) {
+            return List.of();
+        }
+        return pageItems.subList(from, Math.min(pageItems.size(), from + perScreen()));
+    }
+
+    private void changeScreen(int delta) {
+        if (loading) {
+            return;
+        }
+        int target = screenIndex + delta;
+        if (target >= 0 && target < screenCount()) {
+            screenIndex = target;
+            requestVisibleFaces();
+            updatePagingButtons();
+            return;
+        }
+        if (target >= screenCount() && catalogPage < lastCatalogPage) {
+            loadPage(catalogPage + 1, 0);
+        } else if (target < 0 && catalogPage > 1) {
+            // -1 asks for the last screen of the page that loads
+            loadPage(catalogPage - 1, -1);
+        }
+    }
+
+    private void loadPage(int page, int targetScreen) {
         loading = true;
         failed = false;
-        page = target;
-        items = List.of();
+        catalogPage = page;
+        pageItems = List.of();
+        screenIndex = 0;
         releaseFaces();
         requested.clear();
         updatePagingButtons();
-        ElyByCatalogService.getInstance().fetchPage(target)
-                .thenAccept(page -> {
+        ElyByCatalogService.getInstance().fetchPage(page)
+                .thenAccept(loaded -> {
                     if (this.minecraft != null) {
-                        this.minecraft.execute(() -> acceptPage(page));
+                        this.minecraft.execute(() -> acceptPage(loaded, targetScreen));
                     }
                 })
                 .exceptionally(throwable -> {
-                    QuickSkinInfo.LOGGER.warn("Unable to load the Ely.by catalog page {}", target, throwable);
+                    QuickSkinInfo.LOGGER.warn("Unable to load the Ely.by catalog page {}", page, throwable);
                     if (this.minecraft != null) {
                         this.minecraft.execute(() -> {
                             loading = false;
@@ -157,27 +211,35 @@ public class ElyByCatalogScreen extends Screen {
                 });
     }
 
-    private void acceptPage(CatalogPage loaded) {
+    private void acceptPage(CatalogPage loaded, int targetScreen) {
         loading = false;
         failed = false;
-        items = loaded.items;
-        page = loaded.page;
-        lastPage = loaded.lastPage;
+        pageItems = loaded.items;
+        catalogPage = loaded.page;
+        lastCatalogPage = loaded.lastPage;
         totalItems = loaded.totalItems;
+        screenIndex = targetScreen < 0 ? screenCount() - 1
+                : Math.max(0, Math.min(targetScreen, screenCount() - 1));
         updatePagingButtons();
-        for (CatalogItem item : items) {
+        requestVisibleFaces();
+    }
+
+    private void updatePagingButtons() {
+        if (previousButton != null) {
+            previousButton.active = !loading && (screenIndex > 0 || catalogPage > 1);
+        }
+        if (nextButton != null) {
+            nextButton.active = !loading && (screenIndex < screenCount() - 1 || catalogPage < lastCatalogPage);
+        }
+    }
+
+    /** Downloads the textures of the entries on this screen, and nothing else. */
+    private void requestVisibleFaces() {
+        for (CatalogItem item : visibleItems()) {
             requestFace(item);
         }
     }
 
-    private void updatePagingButtons() {
-        if (previousButton != null) previousButton.active = !loading && page > 1;
-        if (nextButton != null) {
-            nextButton.active = !loading && (lastPage <= 0 || page < lastPage);
-        }
-    }
-
-    /** Downloads the catalog entry's texture once and registers it as a face to draw. */
     private void requestFace(CatalogItem item) {
         if (faces.containsKey(item.id) || !requested.add(item.id)) {
             return;
@@ -189,7 +251,7 @@ public class ElyByCatalogScreen extends Screen {
                     }
                 })
                 .exceptionally(throwable -> {
-                    // A missing face only leaves its tile empty; the rest of the page still shows.
+                    // A missing figure only leaves its tile empty; the rest of the screen still shows.
                     QuickSkinInfo.LOGGER.debug("Unable to load Ely.by catalog skin {}", item.id, throwable);
                     return null;
                 });
@@ -252,7 +314,9 @@ public class ElyByCatalogScreen extends Screen {
 //?} else {
         graphics.text(this.font, "Ely.by", 12, 14, TEXT_COLOR, false);
 //?}
-        String counter = page + "/" + Math.max(1, lastPage) + "  ·  " + totalItems;
+        String counter = (screenIndex + 1) + "/" + screenCount()
+                + "  \u00b7  " + catalogPage + "/" + Math.max(1, lastCatalogPage)
+                + "  \u00b7  " + totalItems;
         drawRight(graphics, counter, this.width - 12, 14, MUTED_COLOR);
 
         if (loading) {
@@ -265,38 +329,40 @@ public class ElyByCatalogScreen extends Screen {
                     this.height / 2, 0xFFFF8080);
             return;
         }
-        if (items.isEmpty()) {
+        List<CatalogItem> visible = visibleItems();
+        if (visible.isEmpty()) {
             drawCenter(graphics, Component.translatable("quickskin.elyby.empty").getString(),
                     this.height / 2, MUTED_COLOR);
             return;
         }
 
-        int originX = (this.width - GRID_WIDTH) / 2;
-        int originY = HEADER;
         int hovered = tileAt(mouseX, mouseY);
-        for (int index = 0; index < items.size() && index < COLUMNS * ROWS; index++) {
-            int column = index % COLUMNS;
-            int row = index / COLUMNS;
-            int left = originX + column * (TILE + GAP);
-            int top = originY + row * (TILE + GAP);
+        for (int index = 0; index < visible.size(); index++) {
+            int column = index % columns;
+            int row = index / columns;
+            int left = gridX + column * (tile + GAP);
+            int top = gridY + row * (tile + GAP);
 
-            graphics.fill(left, top, left + TILE, top + TILE, TILE_BACKGROUND);
-            drawFigure(graphics, items.get(index).id, left, top);
+            graphics.fill(left, top, left + tile, top + tile, TILE_BACKGROUND);
+            drawFigure(graphics, visible.get(index).id, left, top);
             if (index == hovered) {
-                graphics.fill(left - 1, top - 1, left + TILE + 1, top + 1, TILE_HOVER);
-                graphics.fill(left - 1, top + TILE, left + TILE + 1, top + TILE + 1, TILE_HOVER);
-                graphics.fill(left - 1, top, left + 1, top + TILE, TILE_HOVER);
-                graphics.fill(left + TILE, top, left + TILE + 1, top + TILE, TILE_HOVER);
+                graphics.fill(left - 1, top - 1, left + tile + 1, top + 1, TILE_HOVER);
+                graphics.fill(left - 1, top + tile, left + tile + 1, top + tile + 1, TILE_HOVER);
+                graphics.fill(left - 1, top, left + 1, top + tile, TILE_HOVER);
+                graphics.fill(left + tile, top, left + tile + 1, top + tile, TILE_HOVER);
             }
         }
 
         if (applying) {
             drawCenter(graphics, Component.translatable("quickskin.elyby.applying").getString(),
-                    originY + GRID_HEIGHT + 12, 0xFFFFFF80);
+                    gridY + gridHeight + 4, 0xFFFFFF80);
         }
     }
 
-    /** Draws the skin as a small standing figure: arms and legs, then body and head on top. */
+    /**
+     * Draws the skin as a standing figure: arms and legs first, then the body and head on top, all
+     * scaled so the figure fills most of the tile.
+     */
     private void drawFigure(
             //? if <26.1 {
             GuiGraphics graphics,
@@ -307,50 +373,59 @@ public class ElyByCatalogScreen extends Screen {
         Identifier texture = faces.get(id);
         int[] size = faceSizes.get(id);
         if (texture == null || size == null) {
-            graphics.fill(left + (TILE - FACE) / 2, top + (TILE - FACE) / 2,
-                    left + (TILE + FACE) / 2, top + (TILE + FACE) / 2, 0x40FFFFFF);
+            int placeholder = tile / 3;
+            graphics.fill(left + placeholder, top + placeholder, left + tile - placeholder,
+                    top + tile - placeholder, 0x30FFFFFF);
             return;
         }
         int textureWidth = size[0];
         int textureHeight = size[1];
-        int ox = left + (TILE - 16) / 2;
-        int oy = top + (TILE - 32) / 2;
+        float scale = Math.max(1.0F, (tile - 6.0F) / 32.0F);
+        int ox = left + Math.round((tile - 16.0F * scale) / 2.0F);
+        int oy = top + Math.round((tile - 32.0F * scale) / 2.0F);
+        int bodyLeft = ox + Math.round(4.0F * scale);
+        int bodyTop = oy + Math.round(8.0F * scale);
+        int legTop = oy + Math.round(20.0F * scale);
+
         // The 1.8 layout keeps the left arm and leg in the second half of a 64x64 sheet
         if (textureHeight >= 64) {
-            blitPart(graphics, texture, ox, oy + 8, 4, 12, 36, 52, textureWidth, textureHeight);
-            blitPart(graphics, texture, ox + 4, oy + 20, 4, 12, 20, 52, textureWidth, textureHeight);
+            blitPart(graphics, texture, ox, bodyTop, 4, 12, 36, 52, scale, textureWidth, textureHeight);
+            blitPart(graphics, texture, bodyLeft, legTop, 4, 12, 20, 52, scale, textureWidth, textureHeight);
         }
-        blitPart(graphics, texture, ox + 12, oy + 8, 4, 12, 44, 20, textureWidth, textureHeight);
-        blitPart(graphics, texture, ox + 8, oy + 20, 4, 12, 4, 20, textureWidth, textureHeight);
-        blitPart(graphics, texture, ox + 4, oy + 8, 8, 12, 20, 20, textureWidth, textureHeight);
-        blitPart(graphics, texture, ox + 4, oy, 8, 8, 8, 8, textureWidth, textureHeight);
+        blitPart(graphics, texture, ox + Math.round(12.0F * scale), bodyTop,
+                4, 12, 44, 20, scale, textureWidth, textureHeight);
+        blitPart(graphics, texture, ox + Math.round(8.0F * scale), legTop,
+                4, 12, 4, 20, scale, textureWidth, textureHeight);
+        blitPart(graphics, texture, bodyLeft, bodyTop,
+                8, 12, 20, 20, scale, textureWidth, textureHeight);
+        blitPart(graphics, texture, bodyLeft, oy,
+                8, 8, 8, 8, scale, textureWidth, textureHeight);
     }
 
+    /** Blits one body part of the skin sheet, scaled into the tile. */
     private void blitPart(
             //? if <26.1 {
             GuiGraphics graphics,
             //?} else {
             GuiGraphicsExtractor graphics,
             //?}
-            Identifier texture, int x, int y, int width, int height,
-            int u, int v, int textureWidth, int textureHeight) {
-        GuiCompat.blit(graphics, texture, x, y, width, height, u, v,
-                width, height, textureWidth, textureHeight);
+            Identifier texture, int x, int y, int sourceWidth, int sourceHeight,
+            int u, int v, float scale, int textureWidth, int textureHeight) {
+        GuiCompat.blit(graphics, texture, x, y,
+                Math.max(1, Math.round(sourceWidth * scale)), Math.max(1, Math.round(sourceHeight * scale)),
+                u, v, sourceWidth, sourceHeight, textureWidth, textureHeight);
     }
 
-    /** The catalog index under the cursor, or -1. */
+    /** The visible entry index under the cursor, or -1. */
     private int tileAt(double mouseX, double mouseY) {
-        int originX = (this.width - GRID_WIDTH) / 2;
-        int originY = HEADER;
-        double localX = mouseX - originX;
-        double localY = mouseY - originY;
+        double localX = mouseX - gridX;
+        double localY = mouseY - gridY;
         if (localX < 0 || localY < 0) return -1;
-        int column = (int) (localX / (TILE + GAP));
-        int row = (int) (localY / (TILE + GAP));
-        if (column >= COLUMNS || row >= ROWS) return -1;
-        if (localX - column * (TILE + GAP) > TILE || localY - row * (TILE + GAP) > TILE) return -1;
-        int index = row * COLUMNS + column;
-        return index < items.size() ? index : -1;
+        int column = (int) (localX / (tile + GAP));
+        int row = (int) (localY / (tile + GAP));
+        if (column >= columns || row >= ROWS) return -1;
+        if (localX - column * (tile + GAP) > tile || localY - row * (tile + GAP) > tile) return -1;
+        return row * columns + column;
     }
 
     //? if <26.1 {
@@ -372,11 +447,15 @@ public class ElyByCatalogScreen extends Screen {
             return false;
         }
         int index = tileAt(mouseX, mouseY);
-        QuickSkinInfo.LOGGER.info("Ely.by catalog click at {},{} on button {} -> tile {}", mouseX, mouseY, button, index);
+        QuickSkinInfo.LOGGER.info("Ely.by catalog click at {},{} -> tile {}", mouseX, mouseY, index);
         if (index < 0) {
             return false;
         }
-        apply(items.get(index));
+        List<CatalogItem> visible = visibleItems();
+        if (index >= visible.size()) {
+            return false;
+        }
+        apply(visible.get(index));
         return true;
     }
 
@@ -384,7 +463,7 @@ public class ElyByCatalogScreen extends Screen {
     private void apply(CatalogItem item) {
         applying = true;
         QuickSkinInfo.LOGGER.info("Applying Ely.by catalog skin {}", item.id);
-        // The face is already downloaded for the grid, so a click never waits on the network
+        // The figure is already downloaded for the grid, so a click never waits on the network
         byte[] cached = faceBytes.get(item.id);
         var source = cached != null
                 ? CompletableFuture.completedFuture(cached)
