@@ -102,6 +102,8 @@ public class ElyByCatalogScreen extends Screen {
     @Override
     protected void init() {
         layoutGrid();
+        QuickSkinInfo.LOGGER.info("Ely.by catalog opened at {}x{}, {} columns of {}px, {} per screen",
+                this.width, this.height, columns, tile, perScreen());
 
         int buttonY = this.height - FOOTER + 14;
         int buttonWidth = 70;
@@ -436,13 +438,17 @@ public class ElyByCatalogScreen extends Screen {
     //?} else {
     @Override
     public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean focused) {
-        // The event carries window pixels on these versions; tiles are laid out in GUI coordinates
+        QuickSkinInfo.LOGGER.info("Ely.by catalog raw click x={} y={} button={} focused={}",
+                event.x(), event.y(), GuiCompat.mouseButton(event), focused);
         return clickCatalog(GuiCompat.mouseX(event), GuiCompat.mouseY(event),
                 GuiCompat.mouseButton(event)) || super.mouseClicked(event, focused);
     }
     //?}
 
     private boolean clickCatalog(double mouseX, double mouseY, int button) {
+        QuickSkinInfo.LOGGER.info("Ely.by catalog click x={} y={} button={} loading={} applying={} grid=({},{} {}px {}x{}) screen={}/{}",
+                mouseX, mouseY, button, loading, applying, gridX, gridY, tile, columns, ROWS,
+                screenIndex + 1, screenCount());
         if (button != 0 || loading || applying) {
             return false;
         }
@@ -476,6 +482,7 @@ public class ElyByCatalogScreen extends Screen {
                         throw new IllegalStateException(malformed);
                     }
                 })
+                .orTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
                 .thenAccept(path -> {
                     if (this.minecraft != null) {
                         this.minecraft.execute(() -> finishApply(path, item));
