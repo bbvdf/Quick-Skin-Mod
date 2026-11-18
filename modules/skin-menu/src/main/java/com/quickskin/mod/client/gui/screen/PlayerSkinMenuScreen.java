@@ -74,6 +74,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Main skin selection menu for QuickSkin
@@ -3006,8 +3007,12 @@ public class PlayerSkinMenuScreen extends Screen implements com.quickskin.mod.cl
         searchButton.setLoading(true);
         searchButton.setTooltip(Tooltip.create(Component.translatable("quickskin.button.searching")));
 
-        // Fetch skin asynchronously
+        // Fetch skin asynchronously. A name Mojang never had is still tried on Ely.by: their
+        // catalog predates Mojang's proxy, and that proxy answers 204 for names Mojang does hold.
         MojangApiService.getInstance().fetchSkinByUsername(username)
+                .exceptionallyCompose(throwable -> isNameMissingFromMojang(throwable)
+                        ? MojangApiService.getInstance().fetchSkinFromElyBy(username)
+                        : CompletableFuture.failedFuture(throwable))
                 .thenAccept(skinData -> {
                     // Execute on main thread
                     if (this.minecraft != null) {
@@ -3024,6 +3029,12 @@ public class PlayerSkinMenuScreen extends Screen implements com.quickskin.mod.cl
                     }
                     return null;
                 });
+    }
+
+    /** True when Mojang simply does not know the name, so Ely.by is worth a try. */
+    private static boolean isNameMissingFromMojang(Throwable throwable) {
+        MojangApiService.ImportFailure failure = MojangApiService.findFailure(throwable);
+        return failure != null && failure.reason() == MojangApiService.Reason.NOT_FOUND;
     }
 
     /** One log line per failed search, so a report can quote the step that failed. */

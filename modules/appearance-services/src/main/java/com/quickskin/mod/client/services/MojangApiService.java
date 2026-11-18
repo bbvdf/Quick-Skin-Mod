@@ -17,6 +17,7 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -33,6 +34,8 @@ public final class MojangApiService {
 
     private static final String MOJANG_API_BASE = "https://api.mojang.com";
     private static final String SESSION_SERVER_BASE = "https://sessionserver.mojang.com";
+    /** Ely.by answers the texture map by nickname directly, in the shape Mojang signs. */
+    private static final String ELY_BY_BASE = "https://skinsystem.ely.by";
     /** Mojang answers at once, but its first byte can take several seconds to come. */
     static final int CONNECT_TIMEOUT_MILLIS = 5_000;
     static final int READ_TIMEOUT_MILLIS = 15_000;
@@ -41,6 +44,10 @@ public final class MojangApiService {
     private static final Pattern USERNAME = Pattern.compile("[A-Za-z0-9_]{1,16}");
     private static final Pattern TEXTURE_PATH =
             Pattern.compile("/texture/[0-9a-fA-F]{32,128}");
+    private static final Pattern ELY_BY_STORAGE_PATH =
+            Pattern.compile("/storage/skins/[0-9a-fA-F]{32}\\.png");
+    private static final Pattern ELY_BY_SKIN_PATH =
+            Pattern.compile("/skins/[A-Za-z0-9_]{1,16}(\\.png)?");
 
     public enum Stage { LOOKUP, PROFILE, DOWNLOAD }
 
@@ -157,17 +164,7 @@ public final class MojangApiService {
                     throw new ImportFailure(Stage.PROFILE, Reason.RESPONSE_TOO_LARGE, 200, null);
                 }
                 JsonObject textures = requiredObject(parseObject(decoded), "textures");
-                if (!textures.has("SKIN")) {
-                    throw new ImportFailure(Stage.PROFILE, Reason.NO_CUSTOM_SKIN, 200, null);
-                }
-                JsonObject skin = requiredObject(textures, "SKIN");
-                URL skinUrl = validateTextureUrl(requiredString(skin, "url"));
-                String model = "default";
-                if (skin.has("metadata")) {
-                    JsonObject metadata = requiredObject(skin, "metadata");
-                    if (metadata.has("model") && "slim".equals(requiredString(metadata, "model"))) model = "slim";
-                }
-                return new SkinTextureData(skinUrl.toString(), model);
+                return readTextureEntry(textures);
             } catch (ImportFailure failure) {
                 throw failure;
             } catch (Exception malformed) {
@@ -182,20 +179,22 @@ public final class MojangApiService {
      * @return CompletableFuture containing the BufferedImage
      */
     public CompletableFuture<BufferedImage> downloadSkinImage(String skinUrl) {
-        return ClientIoExecutor.supplyAsync(() -> {
-            URL url;
-            try {
-                url = validateTextureUrl(skinUrl);
-            } catch (Exception malformed) {
-                throw new ImportFailure(Stage.DOWNLOAD, Reason.INVALID_RESPONSE, null, malformed);
-            }
-            byte[] body = readResponse(url.toString(), Stage.DOWNLOAD, MAX_SKIN_BYTES);
-            try {
-                return SafeImageReader.readSkin(body);
-            } catch (IOException | RuntimeException malformed) {
-                throw new ImportFailure(Stage.DOWNLOAD, Reason.INVALID_RESPONSE, 200, malformed);
-            }
-        });
+        return ClientIoExecutor.supplyAsync(() -> downloadImage(skinUrl));
+    }
+
+    private BufferedImage downloadImage(String skinUrl) {
+        URL url;
+        try {
+            url = validateTextureUrl(skinUrl);
+        } catch (Exception malformed) {
+            throw new ImportFailure(Stage.DOWNLOAD, Reason.INVALID_RESPONSE, null, malformed);
+        }
+        byte[] body = readResponse(url.toString(), Stage.DOWNLOAD, MAX_SKIN_BYTES);
+        try {
+            return SafeImageReader.readSkin(body);
+        } catch (IOException | RuntimeException malformed) {
+            throw new ImportFailure(Stage.DOWNLOAD, Reason.INVALID_RESPONSE, 200, malformed);
+        }
     }
 
     /**
@@ -226,6 +225,61 @@ public final class MojangApiService {
                                         });
                             });
                 });
+    }
+
+    /**
+     * Fetch and download a player's skin from Ely.by by username.
+     * <p>
+     * Ely.by serves the texture map by nickname, so no UUID lookup is needed: one request returns
+     * the same {@code textures} object Mojang signs into a profile property. Its proxying of
+     * Mojang textures is unreliable (it answered 204/500 for names Mojang does hold), so this is a
+     * fallback for names Mojang does not know, not a replacement for
+     * {@link #fetchSkinByUsername(String)}.
+     *
+     * @param username The player's Ely.by nickname
+     * @return CompletableFuture containing the skin data, with a null UUID (Ely.by answers none)
+     */
+    public CompletableFuture<MojangSkinData> fetchSkinFromElyBy(String username) {
+        if (username == null || !USERNAME.matcher(username).matches()) {
+            return CompletableFuture.failedFuture(new ImportFailure(Stage.LOOKUP, Reason.INVALID_USERNAME, null, null));
+        }
+        return ClientIoExecutor.supplyAsync(() -> {
+            long start = System.nanoTime();
+            // Ely.by's texture map is a name lookup too: a nickname it does not know answers 204,
+            // which the LOOKUP stage already classifies as NOT_FOUND.
+            byte[] body = readResponse(ELY_BY_BASE + "/textures/" + username, Stage.LOOKUP, MAX_JSON_BYTES);
+            try {
+                SkinTextureData texture = readTextureEntry(parseObject(body));
+                BufferedImage image = downloadImage(texture.url);
+                QuickSkinInfo.LOGGER.info("Ely.by skin of '{}' fetched in {} ms", username,
+                        millis(start, System.nanoTime()));
+                return new MojangSkinData(username, null, image, texture.modelType, texture.url);
+            } catch (ImportFailure failure) {
+                throw failure;
+            } catch (Exception malformed) {
+                throw new ImportFailure(Stage.PROFILE, Reason.INVALID_RESPONSE, 200, malformed);
+            }
+        });
+    }
+
+    /** Read the {@code SKIN} entry of a textures object, as Mojang signs it and Ely.by serves it. */
+    private static SkinTextureData readTextureEntry(JsonObject textures) {
+        if (!textures.has("SKIN")) {
+            throw new ImportFailure(Stage.PROFILE, Reason.NO_CUSTOM_SKIN, 200, null);
+        }
+        JsonObject skin = requiredObject(textures, "SKIN");
+        URL skinUrl;
+        try {
+            skinUrl = validateTextureUrl(requiredString(skin, "url"));
+        } catch (Exception malformed) {
+            throw new ImportFailure(Stage.PROFILE, Reason.INVALID_RESPONSE, 200, malformed);
+        }
+        String model = "default";
+        if (skin.has("metadata")) {
+            JsonObject metadata = requiredObject(skin, "metadata");
+            if (metadata.has("model") && "slim".equals(requiredString(metadata, "model"))) model = "slim";
+        }
+        return new SkinTextureData(skinUrl.toString(), model);
     }
 
     private static long millis(long from, long to) {
@@ -300,22 +354,31 @@ public final class MojangApiService {
         }
     }
 
-    /** Accept historical HTTP payloads only for Mojang's exact texture host, then upgrade them. */
+    /**
+     * Accept historical HTTP payloads only for the exact texture hosts Quick Skin reads, then
+     * upgrade them: Mojang's texture CDN, and Ely.by's storage and per-nickname endpoints.
+     */
     private static URL validateTextureUrl(String value) throws Exception {
         if (value == null || value.length() > 512) {
-            throw new IOException("Invalid Mojang texture URL");
+            throw new IOException("Invalid skin texture URL");
         }
         URI uri = URI.create(value);
         String scheme = uri.getScheme();
         if (!("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
-                || !"textures.minecraft.net".equalsIgnoreCase(uri.getHost())
                 || uri.getUserInfo() != null || uri.getPort() != -1
-                || uri.getQuery() != null || uri.getFragment() != null
-                || !TEXTURE_PATH.matcher(uri.getPath()).matches()) {
-            throw new IOException("Untrusted Mojang texture URL");
+                || uri.getQuery() != null || uri.getFragment() != null) {
+            throw new IOException("Untrusted skin texture URL");
         }
-        return new URI("https", null, "textures.minecraft.net", -1,
-                uri.getPath(), null, null).toURL();
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+        String path = uri.getPath() == null ? "" : uri.getPath();
+        if (host.equals("textures.minecraft.net") && TEXTURE_PATH.matcher(path).matches()) {
+            return new URI("https", null, "textures.minecraft.net", -1, path, null, null).toURL();
+        }
+        if ((host.equals("ely.by") && ELY_BY_STORAGE_PATH.matcher(path).matches())
+                || (host.equals("skinsystem.ely.by") && ELY_BY_SKIN_PATH.matcher(path).matches())) {
+            return new URI("https", null, host, -1, path, null, null).toURL();
+        }
+        throw new IOException("Untrusted skin texture URL");
     }
 
     /**

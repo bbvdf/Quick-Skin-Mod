@@ -207,6 +207,47 @@ class MojangApiServiceTest {
         assertTrue(transport.opened.isEmpty());
     }
 
+    private static final String ELY_BY_NICKNAME_URL = "https://skinsystem.ely.by/textures/Alice";
+    private static final String ELY_BY_STORAGE_URL =
+            "http://ely.by/storage/skins/" + "b".repeat(32) + ".png";
+
+    @Test
+    void elyByNicknameImportsWithoutUuidLookup() throws Exception {
+        var image = new ByteArrayOutputStream();
+        ImageIO.write(fixtureImage(), "PNG", image);
+        var transport = new Transport(
+                new Reply(200, utf8("{\"SKIN\":{\"url\":\"" + ELY_BY_STORAGE_URL
+                        + "\",\"metadata\":{\"model\":\"slim\"}}}")),
+                new Reply(200, image.toByteArray()));
+        var result = transport.service().fetchSkinFromElyBy("Alice").get(5, TimeUnit.SECONDS);
+        assertEquals(ELY_BY_NICKNAME_URL, transport.opened.get(0).getURL().toString(),
+                "the texture map is requested by nickname, with no UUID lookup");
+        assertNull(result.uuid, "Ely.by answers no UUID");
+        assertEquals("Alice", result.username);
+        assertEquals("slim", result.modelType);
+        assertEquals("https://ely.by/storage/skins/" + "b".repeat(32) + ".png", result.textureUrl,
+                "the http storage URL is upgraded to https");
+        assertEquals(64, result.image.getWidth());
+        transport.assertClosed();
+    }
+
+    @Test
+    void elyByEmptyAnswerIsNotFound() {
+        var transport = new Transport(new Reply(204, new byte[0]));
+        requireFailure(transport.service().fetchSkinFromElyBy("Alice"), LOOKUP, NOT_FOUND, 204);
+        assertEquals(1, transport.opened.size());
+        transport.assertClosed();
+    }
+
+    @Test
+    void elyByForeignTextureHostIsRejected() {
+        var transport = new Transport(new Reply(200, utf8(
+                "{\"SKIN\":{\"url\":\"https://example.com/skin.png\"}}")));
+        requireFailure(transport.service().fetchSkinFromElyBy("Alice"), PROFILE, INVALID_RESPONSE, 200);
+        assertEquals(1, transport.opened.size());
+        transport.assertClosed();
+    }
+
     private static MojangApiService.ImportFailure requireFailure(CompletableFuture<?> future,
             MojangApiService.Stage stage, MojangApiService.Reason reason, Integer status) {
         ExecutionException thrown = assertThrows(ExecutionException.class, () -> future.get(5, TimeUnit.SECONDS),
