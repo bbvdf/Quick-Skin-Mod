@@ -51,7 +51,7 @@ public class ElyByCatalogScreen extends Screen {
 
     private static final int ROWS = 3;
     private static final int MAX_COLUMNS = 6;
-    private static final int MIN_TILE = 40;
+    private static final int MIN_TILE = 28;
     private static final int MAX_TILE = 96;
     private static final int GAP = 8;
     private static final int HEADER = 42;
@@ -380,7 +380,7 @@ public class ElyByCatalogScreen extends Screen {
         }
         int textureWidth = size[0];
         int textureHeight = size[1];
-        float scale = Math.max(1.0F, (tile - 6.0F) / 32.0F);
+        float scale = Math.max(0.5F, (tile - 4.0F) / 32.0F);
         int ox = left + Math.round((tile - 16.0F * scale) / 2.0F);
         int oy = top + Math.round((tile - 32.0F * scale) / 2.0F);
         int bodyLeft = ox + Math.round(4.0F * scale);
