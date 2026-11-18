@@ -36,6 +36,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Browses the public Ely.by skin catalog inside the game: 40 skins per page in a grid of faces,
@@ -71,7 +72,10 @@ public class ElyByCatalogScreen extends Screen {
 
     /** Registered face textures by catalog id, and the ids whose download is in flight. */
     private final Map<Long, Identifier> faces = new HashMap<>();
-    private final Map<Long, Integer> faceSizes = new HashMap<>();
+    /** The texture's pixel size by catalog id, so a figure is drawn from the right layout. */
+    private final Map<Long, int[]> faceSizes = new HashMap<>();
+    /** The original PNG of each loaded face, so applying a skin never downloads it twice. */
+    private final Map<Long, byte[]> faceBytes = new HashMap<>();
     private final Set<Long> requested = new HashSet<>();
 
     private Button previousButton;
@@ -197,12 +201,12 @@ public class ElyByCatalogScreen extends Screen {
         }
         try {
             var image = NativeImage.read(new ByteArrayInputStream(bytes));
-            int size = image.getWidth();
             DynamicTexture texture = MinecraftTextureUploads.create(() -> "quickskin_elyby_" + id, image);
             Identifier location = Identifier.fromNamespaceAndPath(QuickSkinInfo.MOD_ID, "elyby/" + id);
             Minecraft.getInstance().getTextureManager().register(location, texture);
             faces.put(id, location);
-            faceSizes.put(id, size);
+            faceSizes.put(id, new int[]{image.getWidth(), image.getHeight()});
+            faceBytes.put(id, bytes);
         } catch (Exception malformed) {
             QuickSkinInfo.LOGGER.warn("Unable to register Ely.by catalog skin {}", id, malformed);
         }
@@ -219,6 +223,7 @@ public class ElyByCatalogScreen extends Screen {
         }
         faces.clear();
         faceSizes.clear();
+        faceBytes.clear();
     }
 
     //? if <26.1 {
@@ -276,16 +281,7 @@ public class ElyByCatalogScreen extends Screen {
             int top = originY + row * (TILE + GAP);
 
             graphics.fill(left, top, left + TILE, top + TILE, TILE_BACKGROUND);
-            Identifier face = faces.get(items.get(index).id);
-            if (face != null) {
-                int size = faceSizes.getOrDefault(items.get(index).id, 64);
-                int inset = (TILE - FACE) / 2;
-                GuiCompat.blit(graphics, face, left + inset, top + inset, FACE, FACE,
-                        8.0F, 8.0F, 8, 8, size, size);
-            } else {
-                graphics.fill(left + (TILE - FACE) / 2, top + (TILE - FACE) / 2,
-                        left + (TILE + FACE) / 2, top + (TILE + FACE) / 2, 0x40FFFFFF);
-            }
+            drawFigure(graphics, items.get(index).id, left, top);
             if (index == hovered) {
                 graphics.fill(left - 1, top - 1, left + TILE + 1, top + 1, TILE_HOVER);
                 graphics.fill(left - 1, top + TILE, left + TILE + 1, top + TILE + 1, TILE_HOVER);
@@ -298,6 +294,48 @@ public class ElyByCatalogScreen extends Screen {
             drawCenter(graphics, Component.translatable("quickskin.elyby.applying").getString(),
                     originY + GRID_HEIGHT + 12, 0xFFFFFF80);
         }
+    }
+
+    /** Draws the skin as a small standing figure: arms and legs, then body and head on top. */
+    private void drawFigure(
+            //? if <26.1 {
+            GuiGraphics graphics,
+            //?} else {
+            GuiGraphicsExtractor graphics,
+            //?}
+            long id, int left, int top) {
+        Identifier texture = faces.get(id);
+        int[] size = faceSizes.get(id);
+        if (texture == null || size == null) {
+            graphics.fill(left + (TILE - FACE) / 2, top + (TILE - FACE) / 2,
+                    left + (TILE + FACE) / 2, top + (TILE + FACE) / 2, 0x40FFFFFF);
+            return;
+        }
+        int textureWidth = size[0];
+        int textureHeight = size[1];
+        int ox = left + (TILE - 16) / 2;
+        int oy = top + (TILE - 32) / 2;
+        // The 1.8 layout keeps the left arm and leg in the second half of a 64x64 sheet
+        if (textureHeight >= 64) {
+            blitPart(graphics, texture, ox, oy + 8, 4, 12, 36, 52, textureWidth, textureHeight);
+            blitPart(graphics, texture, ox + 4, oy + 20, 4, 12, 20, 52, textureWidth, textureHeight);
+        }
+        blitPart(graphics, texture, ox + 12, oy + 8, 4, 12, 44, 20, textureWidth, textureHeight);
+        blitPart(graphics, texture, ox + 8, oy + 20, 4, 12, 4, 20, textureWidth, textureHeight);
+        blitPart(graphics, texture, ox + 4, oy + 8, 8, 12, 20, 20, textureWidth, textureHeight);
+        blitPart(graphics, texture, ox + 4, oy, 8, 8, 8, 8, textureWidth, textureHeight);
+    }
+
+    private void blitPart(
+            //? if <26.1 {
+            GuiGraphics graphics,
+            //?} else {
+            GuiGraphicsExtractor graphics,
+            //?}
+            Identifier texture, int x, int y, int width, int height,
+            int u, int v, int textureWidth, int textureHeight) {
+        GuiCompat.blit(graphics, texture, x, y, width, height, u, v,
+                width, height, textureWidth, textureHeight);
     }
 
     /** The catalog index under the cursor, or -1. */
@@ -323,7 +361,9 @@ public class ElyByCatalogScreen extends Screen {
     //?} else {
     @Override
     public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean focused) {
-        return clickCatalog(event.x(), event.y(), GuiCompat.mouseButton(event)) || super.mouseClicked(event, focused);
+        // The event carries window pixels on these versions; tiles are laid out in GUI coordinates
+        return clickCatalog(GuiCompat.mouseX(event), GuiCompat.mouseY(event),
+                GuiCompat.mouseButton(event)) || super.mouseClicked(event, focused);
     }
     //?}
 
@@ -332,6 +372,7 @@ public class ElyByCatalogScreen extends Screen {
             return false;
         }
         int index = tileAt(mouseX, mouseY);
+        QuickSkinInfo.LOGGER.info("Ely.by catalog click at {},{} on button {} -> tile {}", mouseX, mouseY, button, index);
         if (index < 0) {
             return false;
         }
@@ -342,8 +383,13 @@ public class ElyByCatalogScreen extends Screen {
     /** Download the chosen skin, save it into the local library and put it on the player. */
     private void apply(CatalogItem item) {
         applying = true;
-        ElyByCatalogService.getInstance().download(item.skinUrl)
-                .thenApply(bytes -> {
+        QuickSkinInfo.LOGGER.info("Applying Ely.by catalog skin {}", item.id);
+        // The face is already downloaded for the grid, so a click never waits on the network
+        byte[] cached = faceBytes.get(item.id);
+        var source = cached != null
+                ? CompletableFuture.completedFuture(cached)
+                : ElyByCatalogService.getInstance().download(item.skinUrl);
+        source.thenApply(bytes -> {
                     try {
                         BufferedImage image = SafeImageReader.readSkin(bytes);
                         return SkinImporter.saveSkinImage(image, "elyby-" + item.id);
