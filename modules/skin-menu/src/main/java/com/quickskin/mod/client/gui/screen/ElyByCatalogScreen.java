@@ -121,6 +121,10 @@ public class ElyByCatalogScreen extends Screen {
     private int sortIndex = 5;
     /** Index into WINDOW_DAYS, for the trending orders only. */
     private int windowIndex = 1;
+    /** Which order menu is open: -1 none, 0 the ordering, 1 the window. */
+    private int openMenu = -1;
+    /** Screen rectangles of the open menu's rows, top to bottom, rebuilt every draw. */
+    private final java.util.List<int[]> menuRects = new java.util.ArrayList<>();
 
     /** The public skin catalogs this screen can browse, Crafty first. */
     private enum CatalogSource {
@@ -171,22 +175,13 @@ public class ElyByCatalogScreen extends Screen {
         sourceButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.source_tip")));
         addRenderableWidget(sourceButton);
 
-        sortButton = Button.builder(sortLabel(), button -> {
-                    sortIndex = (sortIndex + 1) % source.orders;
-                    sortButton.setMessage(sortLabel());
-                    updatePagingButtons();
-                    loadPage(1, 0);
-                })
+        sortButton = Button.builder(sortLabel(), button -> toggleMenu(0))
                 .bounds(rowX + step, buttonY, buttonWidth, 20)
                 .build();
         sortButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.sort_tip")));
         addRenderableWidget(sortButton);
 
-        windowButton = Button.builder(windowLabel(), button -> {
-                    windowIndex = (windowIndex + 1) % WINDOW_DAYS.length;
-                    windowButton.setMessage(windowLabel());
-                    loadPage(1, 0);
-                })
+        windowButton = Button.builder(windowLabel(), button -> toggleMenu(1))
                 .bounds(rowX + 2 * step, buttonY, buttonWidth, 20)
                 .build();
         windowButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.window_tip")));
@@ -271,6 +266,7 @@ public class ElyByCatalogScreen extends Screen {
     private void loadPage(int page, int targetScreen) {
         loading = true;
         failed = false;
+        openMenu = -1;
         catalogPage = page;
         pageItems = List.of();
         screenIndex = 0;
@@ -360,10 +356,107 @@ public class ElyByCatalogScreen extends Screen {
         return source == CatalogSource.CRAFTY && sortIndex >= 3;
     }
 
+    private void toggleMenu(int menu) {
+        openMenu = openMenu == menu ? -1 : menu;
+    }
+
+    /** Every order the current source offers, in the sequence CRAFTY_ORDERS and Ely.by use. */
+    private List<Component> sortOptions() {
+        if (source == CatalogSource.ELY) {
+            return List.of(Component.translatable("quickskin.elyby.sort_hot"),
+                    Component.translatable("quickskin.elyby.sort_new"));
+        }
+        return List.of(Component.translatable("quickskin.elyby.sort_hot"),
+                Component.translatable("quickskin.elyby.sort_new"),
+                Component.translatable("quickskin.elyby.sort_viewed"),
+                Component.translatable("quickskin.elyby.sort_gainers"),
+                Component.translatable("quickskin.elyby.sort_growing"),
+                Component.translatable("quickskin.elyby.sort_hot_now"));
+    }
+
+    private List<Component> windowOptions() {
+        return List.of(Component.translatable("quickskin.elyby.window_today"),
+                Component.translatable("quickskin.elyby.window_week"),
+                Component.translatable("quickskin.elyby.window_two_weeks"),
+                Component.translatable("quickskin.elyby.window_month"));
+    }
+
+    /** Draws the open menu over the grid, and records each row for the click test. */
+    private void drawMenu(
+            //? if <26.1 {
+            GuiGraphics graphics,
+            //?} else {
+            GuiGraphicsExtractor graphics,
+            //?}
+            int mouseX, int mouseY) {
+        menuRects.clear();
+        if (openMenu < 0) {
+            return;
+        }
+        List<Component> labels = openMenu == 0 ? sortOptions() : windowOptions();
+        int itemHeight = 16;
+        int width = 96;
+        int anchorX = openMenu == 0 ? sortButton.getX() : windowButton.getX();
+        int bottom = (openMenu == 0 ? sortButton.getY() : windowButton.getY()) - 2;
+        int totalHeight = labels.size() * itemHeight + 4;
+        int x = Math.max(2, Math.min(anchorX, this.width - width - 2));
+        int y = bottom - totalHeight;
+
+        graphics.fill(x, y, x + width, y + totalHeight, 0xF0141414);
+        graphics.fill(x, y, x + width, y + 1, 0xFF808080);
+        graphics.fill(x, y + totalHeight - 1, x + width, y + totalHeight, 0xFF808080);
+        graphics.fill(x, y, x + 1, y + totalHeight, 0xFF808080);
+        graphics.fill(x + width - 1, y, x + width, y + totalHeight, 0xFF808080);
+
+        int current = openMenu == 0 ? sortIndex : windowIndex;
+        for (int index = 0; index < labels.size(); index++) {
+            int rowY = y + 2 + index * itemHeight;
+            int rowX = x + 2;
+            int rowWidth = width - 4;
+            boolean hover = mouseX >= rowX && mouseX < rowX + rowWidth
+                    && mouseY >= rowY && mouseY < rowY + itemHeight;
+            if (hover) {
+                graphics.fill(rowX, rowY, rowX + rowWidth, rowY + itemHeight, 0x60FFFFFF);
+            } else if (index == current) {
+                graphics.fill(rowX, rowY, rowX + rowWidth, rowY + itemHeight, 0x30FFFFFF);
+            }
+//? if <26.1 {
+            graphics.drawString(this.font, labels.get(index).getString(), rowX + 4, rowY + 4, TEXT_COLOR, false);
+//?} else {
+            graphics.text(this.font, labels.get(index).getString(), rowX + 4, rowY + 4, TEXT_COLOR, false);
+//?}
+            menuRects.add(new int[]{rowX, rowY, rowWidth, itemHeight});
+        }
+    }
+
+    /** A click while a menu is open picks its row, or closes it and goes no further. */
+    private boolean clickMenu(double mouseX, double mouseY) {
+        for (int index = 0; index < menuRects.size(); index++) {
+            int[] rect = menuRects.get(index);
+            if (mouseX >= rect[0] && mouseX < rect[0] + rect[2]
+                    && mouseY >= rect[1] && mouseY < rect[1] + rect[3]) {
+                if (openMenu == 0) {
+                    sortIndex = index;
+                    sortButton.setMessage(sortLabel());
+                } else {
+                    windowIndex = index;
+                    windowButton.setMessage(windowLabel());
+                }
+                openMenu = -1;
+                updatePagingButtons();
+                loadPage(1, 0);
+                return true;
+            }
+        }
+        openMenu = -1;
+        return true;
+    }
+
     /** Trade one public catalog for the other, dropping whatever the old one had loaded. */
     private void switchSource() {
         source = source.next();
         sortIndex = 0;
+        openMenu = -1;
         sourceButton.setMessage(Component.literal(source.label));
         sortButton.setMessage(sortLabel());
         releaseFaces();
@@ -532,6 +625,7 @@ public class ElyByCatalogScreen extends Screen {
             drawCenter(graphics, Component.translatable("quickskin.elyby.applying").getString(),
                     gridY + gridHeight + 4, 0xFFFFFF80);
         }
+        drawMenu(graphics, mouseX, mouseY);
     }
 
     /**
@@ -623,6 +717,9 @@ public class ElyByCatalogScreen extends Screen {
         // 26.3 numbers the mouse buttons 1-based; the shared constant is the only safe test
         if (button != InputConstants.MOUSE_BUTTON_LEFT || loading || applying) {
             return false;
+        }
+        if (openMenu >= 0) {
+            return clickMenu(mouseX, mouseY);
         }
         int index = tileAt(mouseX, mouseY);
         if (index < 0) {
