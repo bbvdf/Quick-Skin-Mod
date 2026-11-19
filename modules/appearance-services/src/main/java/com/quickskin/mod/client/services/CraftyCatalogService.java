@@ -40,7 +40,7 @@ public final class CraftyCatalogService {
     /** Marks a reference as Crafty's, so a tile knows which service resolves it. */
     public static final String REF_PREFIX = "crafty:";
     private static final int PAGE_SIZE = 20;
-    /** The trending endpoint ignores limit and page, and answers a single page of ten entries. */
+    /** The trending endpoint caps a page at ten entries however large a limit is asked for. */
     private static final int TRENDING_PAGE_SIZE = 10;
     private static final int MAX_JSON_BYTES = 512 * 1024;
     private static final int MAX_SKIN_BYTES = 1024 * 1024;
@@ -55,13 +55,22 @@ public final class CraftyCatalogService {
         NEWEST("created_at,desc"),
         /** "Most Viewed". */
         TOP_VIEWED("views_monthly,desc"),
-        /** "Trending", a separate endpoint with its own page size. */
-        TRENDING(null);
+        /** Trending: "Biggest gainers", the biggest absolute growth in the window. */
+        TRENDING_GAINERS("increase"),
+        /** Trending: "Fastest growing", the biggest percentage growth in the window. */
+        TRENDING_GROWING("increase_percentage"),
+        /** Trending: "Hot right now", the most players wearing it now. */
+        TRENDING_HOT("current_players");
 
         private final String order;
 
         Sort(String order) {
             this.order = order;
+        }
+
+        boolean isTrending() {
+            return order.equals("increase") || order.equals("increase_percentage")
+                    || order.equals("current_players");
         }
     }
 
@@ -72,11 +81,13 @@ public final class CraftyCatalogService {
     /**
      * Fetch one page of the catalog, as the shared page type the catalog screen already draws.
      */
-    public CompletableFuture<ElyByCatalogService.CatalogPage> fetchPage(int page, Sort sort) {
+    public CompletableFuture<ElyByCatalogService.CatalogPage> fetchPage(int page, Sort sort, int windowDays) {
         int requested = Math.max(1, page);
         Sort order = sort == null ? Sort.MOST_WORN : sort;
-        String url = order == Sort.TRENDING
-                ? TRENDING_BASE + "?sort=increase&days=7&limit=" + TRENDING_PAGE_SIZE + "&page=" + requested
+        int days = Math.max(1, windowDays);
+        String url = order.isTrending()
+                ? TRENDING_BASE + "?sort=" + order.order + "&days=" + days
+                        + "&limit=" + TRENDING_PAGE_SIZE + "&page=" + requested
                 : LIST_BASE + "?limit=" + PAGE_SIZE + "&page=" + requested + "&type=skin&sort=" + order.order;
         return ClientIoExecutor.supplyAsync(() -> {
             byte[] body = read(url, MAX_JSON_BYTES);
@@ -107,9 +118,11 @@ public final class CraftyCatalogService {
                         ? root.getAsJsonObject("meta") : new JsonObject();
                 int total = intOr(meta, "total", items.size());
                 int lastPage;
-                if (order == Sort.TRENDING) {
-                    // This endpoint ignores page and always answers the same ten entries.
-                    lastPage = requested;
+                if (order.isTrending()) {
+                    // Paging works here, but the end is reported as a flag rather than a number.
+                    boolean hasMore = meta.has("hasMore") && meta.get("hasMore").isJsonPrimitive()
+                            && meta.get("hasMore").getAsBoolean();
+                    lastPage = hasMore && !items.isEmpty() ? requested + 1 : requested;
                 } else {
                     // The service caps its own paging: twenty entries per page, twenty-five pages.
                     lastPage = Math.max(requested, intOr(meta, "last_page", requested));

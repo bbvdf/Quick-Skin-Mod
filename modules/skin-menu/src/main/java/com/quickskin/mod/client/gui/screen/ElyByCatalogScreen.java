@@ -12,6 +12,7 @@ import com.quickskin.mod.client.rendering.PlayerModelRenderer;
 import com.quickskin.mod.client.rendering.PreviewPlayerData;
 import com.quickskin.mod.common.data.AssetMetadata;
 import com.quickskin.mod.common.util.HashUtil;
+import com.quickskin.mod.common.util.HDTextureProcessor;
 import com.quickskin.mod.common.util.SafeImageReader;
 import com.quickskin.mod.platform.MinecraftTextureUploads;
 import com.quickskin.mod.platform.QuickSkinInfo;
@@ -60,13 +61,24 @@ public class ElyByCatalogScreen extends Screen {
     private static final int MAX_TILE = 96;
     private static final int GAP = 8;
     private static final int HEADER = 42;
-    private static final int FOOTER = 50;
+    private static final int FOOTER = 78;
     private static final int TEXT_COLOR = 0xFFF0F0F0;
     private static final int MUTED_COLOR = 0xFFA0A0A0;
     private static final int TILE_BACKGROUND = 0x50000000;
     private static final int TILE_HOVER = 0xD0FFFFFF;
     /** How much of the remaining angle each frame takes, the site's easing in a simpler form. */
     private static final float DAMPING = 0.25F;
+    /** Crafty's orders, in the sequence its ordering button cycles through. */
+    private static final CraftyCatalogService.Sort[] CRAFTY_ORDERS = {
+            CraftyCatalogService.Sort.MOST_WORN,
+            CraftyCatalogService.Sort.NEWEST,
+            CraftyCatalogService.Sort.TOP_VIEWED,
+            CraftyCatalogService.Sort.TRENDING_GAINERS,
+            CraftyCatalogService.Sort.TRENDING_GROWING,
+            CraftyCatalogService.Sort.TRENDING_HOT
+    };
+    /** The windows the trending orders are measured over, as the site's tabs offer them. */
+    private static final int[] WINDOW_DAYS = {1, 7, 14, 30};
 
     private final Screen parent;
 
@@ -102,15 +114,18 @@ public class ElyByCatalogScreen extends Screen {
     private Button nextButton;
     private Button sortButton;
     private Button sourceButton;
+    private Button windowButton;
     /** Which public catalog this screen browses. */
     private CatalogSource source = CatalogSource.ELY;
-    /** Index into the current source's orders: Ely.by has two, Crafty four. */
+    /** Index into the current source's orders: Ely.by has two, Crafty six. */
     private int sortIndex;
+    /** Index into WINDOW_DAYS, for the trending orders only. */
+    private int windowIndex = 1;
 
     /** The public skin catalogs this screen can browse. */
     private enum CatalogSource {
         ELY("Ely.by", 2),
-        CRAFTY("Crafty", 4);
+        CRAFTY("Crafty", 6);
 
         private final String label;
         private final int orders;
@@ -136,15 +151,16 @@ public class ElyByCatalogScreen extends Screen {
         QuickSkinInfo.LOGGER.info("Ely.by catalog opened at {}x{}, {} columns of {}px, {} per screen",
                 this.width, this.height, columns, tile, perScreen());
 
-        int buttonY = this.height - FOOTER + 14;
         int buttonWidth = 58;
         int step = buttonWidth + 4;
         int center = this.width / 2;
-        int rowX = center - (buttonWidth * 5 + 4 * 4) / 2;
+        int rowX = center - (buttonWidth * 4 + 3 * 4) / 2;
+        int topY = this.height - FOOTER + 8;
+        int bottomY = topY + 24;
 
         sourceButton = Button.builder(Component.literal(source.label),
                         button -> switchSource())
-                .bounds(rowX, buttonY, buttonWidth, 20)
+                .bounds(rowX, topY, buttonWidth, 20)
                 .build();
         sourceButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.source_tip")));
         addRenderableWidget(sourceButton);
@@ -152,29 +168,40 @@ public class ElyByCatalogScreen extends Screen {
         sortButton = Button.builder(sortLabel(), button -> {
                     sortIndex = (sortIndex + 1) % source.orders;
                     sortButton.setMessage(sortLabel());
+                    updatePagingButtons();
                     loadPage(1, 0);
                 })
-                .bounds(rowX + step, buttonY, buttonWidth, 20)
+                .bounds(rowX + step, topY, buttonWidth, 20)
                 .build();
         sortButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.sort_tip")));
         addRenderableWidget(sortButton);
 
+        windowButton = Button.builder(windowLabel(), button -> {
+                    windowIndex = (windowIndex + 1) % WINDOW_DAYS.length;
+                    windowButton.setMessage(windowLabel());
+                    loadPage(1, 0);
+                })
+                .bounds(rowX + 2 * step, topY, buttonWidth, 20)
+                .build();
+        windowButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.window_tip")));
+        addRenderableWidget(windowButton);
+
+        addRenderableWidget(Button.builder(Component.translatable("quickskin.button.close"),
+                        button -> onClose())
+                .bounds(rowX + 3 * step, topY, buttonWidth, 20)
+                .build());
+
         previousButton = Button.builder(Component.translatable("quickskin.elyby.previous"),
                         button -> changeScreen(-1))
-                .bounds(rowX + 2 * step, buttonY, buttonWidth, 20)
+                .bounds(center - buttonWidth - 2, bottomY, buttonWidth, 20)
                 .build();
         addRenderableWidget(previousButton);
 
         nextButton = Button.builder(Component.translatable("quickskin.elyby.next"),
                         button -> changeScreen(1))
-                .bounds(rowX + 3 * step, buttonY, buttonWidth, 20)
+                .bounds(center + 2, bottomY, buttonWidth, 20)
                 .build();
         addRenderableWidget(nextButton);
-
-        addRenderableWidget(Button.builder(Component.translatable("quickskin.button.close"),
-                        button -> onClose())
-                .bounds(rowX + 4 * step, buttonY, buttonWidth, 20)
-                .build());
 
         updatePagingButtons();
         if (pageItems.isEmpty() && !loading) {
@@ -283,6 +310,9 @@ public class ElyByCatalogScreen extends Screen {
         if (nextButton != null) {
             nextButton.active = !loading && (screenIndex < screenCount() - 1 || catalogPage < lastCatalogPage);
         }
+        if (windowButton != null) {
+            windowButton.active = windowApplies();
+        }
     }
 
     private Component sortLabel() {
@@ -295,10 +325,33 @@ public class ElyByCatalogScreen extends Screen {
             case 2:
                 return Component.translatable("quickskin.elyby.sort_viewed");
             case 3:
-                return Component.translatable("quickskin.elyby.sort_trending");
+                return Component.translatable("quickskin.elyby.sort_gainers");
+            case 4:
+                return Component.translatable("quickskin.elyby.sort_growing");
+            case 5:
+                return Component.translatable("quickskin.elyby.sort_hot_now");
             default:
                 return Component.translatable("quickskin.elyby.sort_hot");
         }
+    }
+
+    /** The window the trending orders are measured over. */
+    private Component windowLabel() {
+        switch (windowIndex) {
+            case 0:
+                return Component.translatable("quickskin.elyby.window_today");
+            case 2:
+                return Component.translatable("quickskin.elyby.window_two_weeks");
+            case 3:
+                return Component.translatable("quickskin.elyby.window_month");
+            default:
+                return Component.translatable("quickskin.elyby.window_week");
+        }
+    }
+
+    /** Whether the chosen order on the chosen source is measured over a time window. */
+    private boolean windowApplies() {
+        return source == CatalogSource.CRAFTY && sortIndex >= 3;
     }
 
     /** Trade one public catalog for the other, dropping whatever the old one had loaded. */
@@ -336,22 +389,9 @@ public class ElyByCatalogScreen extends Screen {
         if (source == CatalogSource.ELY) {
             return ElyByCatalogService.getInstance().fetchPage(page, sortIndex == 1);
         }
-        CraftyCatalogService.Sort order;
-        switch (sortIndex) {
-            case 1:
-                order = CraftyCatalogService.Sort.NEWEST;
-                break;
-            case 2:
-                order = CraftyCatalogService.Sort.TOP_VIEWED;
-                break;
-            case 3:
-                order = CraftyCatalogService.Sort.TRENDING;
-                break;
-            default:
-                order = CraftyCatalogService.Sort.MOST_WORN;
-                break;
-        }
-        return CraftyCatalogService.getInstance().fetchPage(page, order);
+        int index = Math.max(0, Math.min(sortIndex, CRAFTY_ORDERS.length - 1));
+        return CraftyCatalogService.getInstance()
+                .fetchPage(page, CRAFTY_ORDERS[index], WINDOW_DAYS[windowIndex]);
     }
 
     /** Downloads the textures of the entries on this screen, and nothing else. */
@@ -383,6 +423,12 @@ public class ElyByCatalogScreen extends Screen {
             return;
         }
         try {
+            // A legacy 64x32 sheet samples the wrong rows on a modern model. The import path
+            // normalises one before saving, so the grid must normalise before rendering too.
+            byte[] normalized = HDTextureProcessor.processHDSkin(new ByteArrayInputStream(bytes), true);
+            if (normalized != null) {
+                bytes = normalized;
+            }
             var image = NativeImage.read(new ByteArrayInputStream(bytes));
             DynamicTexture texture = MinecraftTextureUploads.create(() -> "quickskin_elyby_" + id, image);
             Identifier location = Identifier.fromNamespaceAndPath(QuickSkinInfo.MOD_ID, "elyby/" + id);

@@ -444,7 +444,14 @@
   "quickskin.elyby.sort_hot": "最热",
   "quickskin.elyby.sort_new": "最新",
   "quickskin.elyby.sort_viewed": "最多浏览",
-  "quickskin.elyby.sort_trending": "趋势",
+  "quickskin.elyby.sort_gainers": "增长",
+  "quickskin.elyby.sort_growing": "增长%",
+  "quickskin.elyby.sort_hot_now": "当前最热",
+  "quickskin.elyby.window_today": "今日",
+  "quickskin.elyby.window_week": "本周",
+  "quickskin.elyby.window_two_weeks": "两周",
+  "quickskin.elyby.window_month": "本月",
+  "quickskin.elyby.window_tip": "趋势排序的统计时间窗口",
   "quickskin.elyby.source_tip": "在 Ely.by 与 Crafty 皮肤库之间切换",
   "quickskin.elyby.sort_tip": "循环切换当前皮肤库的排序"
 }

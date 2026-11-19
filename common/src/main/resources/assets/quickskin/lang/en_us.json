@@ -456,7 +456,14 @@
   "quickskin.elyby.sort_hot": "Popular",
   "quickskin.elyby.sort_new": "Newest",
   "quickskin.elyby.sort_viewed": "Most viewed",
-  "quickskin.elyby.sort_trending": "Trending",
+  "quickskin.elyby.sort_gainers": "Gainers",
+  "quickskin.elyby.sort_growing": "Growing",
+  "quickskin.elyby.sort_hot_now": "Hot now",
+  "quickskin.elyby.window_today": "Today",
+  "quickskin.elyby.window_week": "Week",
+  "quickskin.elyby.window_two_weeks": "2 weeks",
+  "quickskin.elyby.window_month": "Month",
+  "quickskin.elyby.window_tip": "Time window for the trending orders",
   "quickskin.elyby.source_tip": "Switch between the Ely.by and Crafty catalogs",
   "quickskin.elyby.sort_tip": "Cycle this catalog's orders"
 }
