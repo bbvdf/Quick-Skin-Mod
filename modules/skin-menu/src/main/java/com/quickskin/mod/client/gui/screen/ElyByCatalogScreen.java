@@ -406,16 +406,11 @@ public class ElyByCatalogScreen extends Screen {
         PreviewPlayerData data = previews.computeIfAbsent(item.id, key -> new PreviewPlayerData());
         data.setSkinLocation(texture);
         data.setModelType(item.slim ? "slim" : "classic");
-        // The entity path ignores the requested facing on this Minecraft version; the manual
-        // path applies it, so these tiles ask for their own pose.
-        data.setOwnPose(true);
+
         // The renderer scales a 32-unit model by scale/16, so the drawn height is 2*scale pixels
         float figureScale = Math.max(4.0F, (tile - 6.0F) / 2.0F);
-        // The renderer centres the model's box on its own terms; this offset drops the feet onto
-        // the tile's bottom edge, measured off an in-game screenshot
-        int feetY = top + tile + Math.round(figureScale * 0.5F);
-        PlayerModelRenderer.renderPlayerModel(graphics, left + tile / 2, feetY,
-                figureScale, 45.0F, data, 0, 0, false);
+        PlayerModelRenderer.renderPlayerModel(graphics, left + tile / 2, top + tile - 2,
+                figureScale, 45.0F, data, 0, 0, false, 45.0F);
     }
 
     private void blitPart(

@@ -1060,6 +1060,37 @@ public class PlayerModelRenderer {
      * @param mouseY Mouse Y position (for head tracking)
      * @param followMouse Whether the head should follow the mouse
      */
+    /**
+     * The facing a caller wants the drawn model to hold, for previews that are not the player's
+     * own pose. The picture-in-picture path renders the entity as the world would, so this is the
+     * only way to give a GUI tile its own angle on versions that ignore the pose argument.
+     */
+    private static final ThreadLocal<Float> FORCED_BODY_YAW = new ThreadLocal<>();
+
+    public static void renderPlayerModel(
+//? if <26.1 {
+            GuiGraphics graphics,
+//?} else {
+            GuiGraphicsExtractor graphics,
+//?}
+            int x,
+            int y,
+            float scale,
+            float yRotation,
+            PreviewPlayerData playerData,
+            int mouseX,
+            int mouseY,
+            boolean followMouse,
+            float forcedBodyYaw
+    ) {
+        FORCED_BODY_YAW.set(forcedBodyYaw);
+        try {
+            renderPlayerModel(graphics, x, y, scale, yRotation, playerData, mouseX, mouseY, followMouse);
+        } finally {
+            FORCED_BODY_YAW.remove();
+        }
+    }
+
     public static void renderPlayerModel(
 //? if <26.1 {
             GuiGraphics graphics,
@@ -1368,6 +1399,12 @@ public class PlayerModelRenderer {
                 livingState.boundingBoxWidth /= livingState.scale;
                 livingState.boundingBoxHeight /= livingState.scale;
                 livingState.scale = 1.0f;
+                java.lang.Float forced = FORCED_BODY_YAW.get();
+                if (forced != null) {
+                    // The renderer turns the body by 180 - bodyRot, so this yields the wanted facing
+                    livingState.bodyRot = 180.0F - forced;
+                    livingState.yRot = 180.0F - forced;
+                }
             }
 
             // The state was extracted from the live player, so it arrived carrying whatever that
@@ -1422,6 +1459,12 @@ public class PlayerModelRenderer {
                 livingState.boundingBoxWidth /= livingState.scale;
                 livingState.boundingBoxHeight /= livingState.scale;
                 livingState.scale = 1.0f;
+                java.lang.Float forced = FORCED_BODY_YAW.get();
+                if (forced != null) {
+                    // The renderer turns the body by 180 - bodyRot, so this yields the wanted facing
+                    livingState.bodyRot = 180.0F - forced;
+                    livingState.yRot = 180.0F - forced;
+                }
             }
 
             // The state was extracted from the live player, so it arrived carrying whatever that
@@ -1475,6 +1518,12 @@ public class PlayerModelRenderer {
                 livingState.boundingBoxWidth /= livingState.scale;
                 livingState.boundingBoxHeight /= livingState.scale;
                 livingState.scale = 1.0f;
+                java.lang.Float forced = FORCED_BODY_YAW.get();
+                if (forced != null) {
+                    // The renderer turns the body by 180 - bodyRot, so this yields the wanted facing
+                    livingState.bodyRot = 180.0F - forced;
+                    livingState.yRot = 180.0F - forced;
+                }
             }
 
             // The state was extracted from the live player, so it arrived carrying whatever that
