@@ -7,6 +7,8 @@ import com.quickskin.mod.client.services.LocalAssetManager;
 import com.quickskin.mod.client.services.PlayerAppearanceService;
 import com.quickskin.mod.client.gui.GuiCompat;
 import com.quickskin.mod.client.gui.util.SkinImporter;
+import com.quickskin.mod.client.rendering.PlayerModelRenderer;
+import com.quickskin.mod.client.rendering.PreviewPlayerData;
 import com.quickskin.mod.common.data.AssetMetadata;
 import com.quickskin.mod.common.util.HashUtil;
 import com.quickskin.mod.common.util.SafeImageReader;
@@ -88,6 +90,8 @@ public class ElyByCatalogScreen extends Screen {
     private final Map<Long, int[]> faceSizes = new HashMap<>();
     private final Map<Long, byte[]> faceBytes = new HashMap<>();
     private final Set<Long> requested = new HashSet<>();
+    /** One preview model per entry, reused every frame so a tile costs a draw and not an allocation. */
+    private final Map<Long, PreviewPlayerData> previews = new HashMap<>();
 
     private Button previousButton;
     private Button nextButton;
@@ -332,6 +336,7 @@ public class ElyByCatalogScreen extends Screen {
         faces.clear();
         faceSizes.clear();
         faceBytes.clear();
+        previews.clear();
     }
 
     //? if <26.1 {
@@ -390,7 +395,7 @@ public class ElyByCatalogScreen extends Screen {
             int top = gridY + row * (tile + GAP);
 
             graphics.fill(left, top, left + tile, top + tile, TILE_BACKGROUND);
-            drawFigure(graphics, visible.get(index).id, left, top);
+            drawFigure(graphics, visible.get(index), left, top);
             if (index == hovered) {
                 graphics.fill(left - 1, top - 1, left + tile + 1, top + 1, TILE_HOVER);
                 graphics.fill(left - 1, top + tile, left + tile + 1, top + tile + 1, TILE_HOVER);
@@ -406,8 +411,8 @@ public class ElyByCatalogScreen extends Screen {
     }
 
     /**
-     * Draws the skin as a standing figure: arms and legs first, then the body and head on top, all
-     * scaled so the figure fills most of the tile.
+     * Draws the skin as a real player model turned 45 degrees, feet on the tile's bottom edge, the
+     * same way the skin menu's own preview draws it.
      */
     private void drawFigure(
             //? if <26.1 {
@@ -415,46 +420,23 @@ public class ElyByCatalogScreen extends Screen {
             //?} else {
             GuiGraphicsExtractor graphics,
             //?}
-            long id, int left, int top) {
-        Identifier texture = faces.get(id);
-        int[] size = faceSizes.get(id);
-        if (texture == null || size == null) {
+            CatalogItem item, int left, int top) {
+        Identifier texture = faces.get(item.id);
+        if (texture == null) {
             int placeholder = tile / 3;
             graphics.fill(left + placeholder, top + placeholder, left + tile - placeholder,
                     top + tile - placeholder, 0x30FFFFFF);
             return;
         }
-        int textureWidth = size[0];
-        int textureHeight = size[1];
-        float scale = Math.max(0.5F, (tile - 4.0F) / 32.0F);
-        int ox = left + Math.round((tile - 16.0F * scale) / 2.0F);
-        int oy = top + Math.round((tile - 32.0F * scale) / 2.0F);
-        int bodyLeft = ox + Math.round(4.0F * scale);
-        int bodyTop = oy + Math.round(8.0F * scale);
-        int legTop = oy + Math.round(20.0F * scale);
-
-        // The 1.8 layout keeps the left arm and leg in the second half of a 64x64 sheet; a legacy
-        // 64x32 sheet has neither, so its left limbs reuse the right ones instead of going missing.
-        boolean legacy = textureHeight < 64;
-        if (!legacy) {
-            blitPart(graphics, texture, ox, bodyTop, 4, 12, 36, 52, scale, textureWidth, textureHeight);
-            blitPart(graphics, texture, bodyLeft, legTop, 4, 12, 20, 52, scale, textureWidth, textureHeight);
-        }
-        blitPart(graphics, texture, ox + Math.round(12.0F * scale), bodyTop,
-                4, 12, 44, 20, scale, textureWidth, textureHeight);
-        blitPart(graphics, texture, ox + Math.round(8.0F * scale), legTop,
-                4, 12, 4, 20, scale, textureWidth, textureHeight);
-        if (legacy) {
-            blitPart(graphics, texture, ox, bodyTop, 4, 12, 44, 20, scale, textureWidth, textureHeight);
-            blitPart(graphics, texture, bodyLeft, legTop, 4, 12, 4, 20, scale, textureWidth, textureHeight);
-        }
-        blitPart(graphics, texture, bodyLeft, bodyTop,
-                8, 12, 20, 20, scale, textureWidth, textureHeight);
-        blitPart(graphics, texture, bodyLeft, oy,
-                8, 8, 8, 8, scale, textureWidth, textureHeight);
+        PreviewPlayerData data = previews.computeIfAbsent(item.id, key -> new PreviewPlayerData());
+        data.setSkinLocation(texture);
+        data.setModelType(item.slim ? "slim" : "classic");
+        // A player model is 32 units tall; this keeps it inside the tile with a little air
+        float figureScale = Math.max(0.6F, (tile - 10.0F) / 32.0F);
+        PlayerModelRenderer.renderPlayerModel(graphics, left + tile / 2, top + tile - 2,
+                figureScale, 45.0F, data, 0, 0, false);
     }
 
-    /** Blits one body part of the skin sheet, scaled into the tile. */
     private void blitPart(
             //? if <26.1 {
             GuiGraphics graphics,
