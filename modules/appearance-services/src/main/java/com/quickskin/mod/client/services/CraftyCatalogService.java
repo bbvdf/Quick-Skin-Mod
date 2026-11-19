@@ -19,7 +19,9 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -42,6 +44,8 @@ public final class CraftyCatalogService {
     private static final int PAGE_SIZE = 20;
     /** The trending endpoint caps a page at ten entries however large a limit is asked for. */
     private static final int TRENDING_PAGE_SIZE = 10;
+    /** Trending pages read per grid page, so a grid page still fills a screen of tiles. */
+    private static final int TRENDING_PAGES_PER_SCREEN = 2;
     private static final int MAX_JSON_BYTES = 512 * 1024;
     private static final int MAX_SKIN_BYTES = 1024 * 1024;
     private static final int CONNECT_TIMEOUT_MILLIS = 5_000;
@@ -80,53 +84,27 @@ public final class CraftyCatalogService {
 
     /**
      * Fetch one page of the catalog, as the shared page type the catalog screen already draws.
+     * <p>
+     * A trending page holds only ten entries while a screen of the grid holds more, so trending
+     * reads two service pages per screen; every other order is a single request.
      */
     public CompletableFuture<ElyByCatalogService.CatalogPage> fetchPage(int page, Sort sort, int windowDays) {
         int requested = Math.max(1, page);
         Sort order = sort == null ? Sort.MOST_WORN : sort;
         int days = Math.max(1, windowDays);
-        String url = order.isTrending()
-                ? TRENDING_BASE + "?sort=" + order.order + "&days=" + days
-                        + "&limit=" + TRENDING_PAGE_SIZE + "&page=" + requested
-                : LIST_BASE + "?limit=" + PAGE_SIZE + "&page=" + requested + "&type=skin&sort=" + order.order;
+        if (order.isTrending()) {
+            return ClientIoExecutor.supplyAsync(() -> readTrending(requested, order, days));
+        }
+        String url = LIST_BASE + "?limit=" + PAGE_SIZE + "&page=" + requested
+                + "&type=skin&sort=" + order.order;
         return ClientIoExecutor.supplyAsync(() -> {
-            byte[] body = read(url, MAX_JSON_BYTES);
             try {
-                JsonObject root = JsonParser.parseString(new String(body, StandardCharsets.UTF_8))
-                        .getAsJsonObject();
-                JsonElement rowsElement = root.get("data");
-                if (rowsElement == null || !rowsElement.isJsonArray()) {
-                    throw new ElyByCatalogService.CatalogException("Malformed Crafty catalog response", null);
-                }
-                JsonArray rows = rowsElement.getAsJsonArray();
-                List<ElyByCatalogService.CatalogItem> items = new ArrayList<>(rows.size());
-                for (JsonElement row : rows) {
-                    if (!row.isJsonObject()) continue;
-                    JsonObject object = row.getAsJsonObject();
-                    try {
-                        String hash = string(object, "hash");
-                        if (!hash.matches("[0-9a-fA-F]{64}")) continue;
-                        // The screen treats every item as a texture reference it can download
-                        items.add(new ElyByCatalogService.CatalogItem(hash.hashCode() & 0xFFFFFFFFL,
-                                REF_PREFIX + hash, booleanOrFalse(object, "slim"),
-                                firstPlayer(object), intOr(object, "players_count", 0)));
-                    } catch (Exception skipped) {
-                        // A malformed row must not abort the page.
-                    }
-                }
-                JsonObject meta = root.has("meta") && root.get("meta").isJsonObject()
-                        ? root.getAsJsonObject("meta") : new JsonObject();
+                JsonObject root = fetchJson(url);
+                List<ElyByCatalogService.CatalogItem> items = parseRows(root.get("data"));
+                JsonObject meta = metaOf(root);
                 int total = intOr(meta, "total", items.size());
-                int lastPage;
-                if (order.isTrending()) {
-                    // Paging works here, but the end is reported as a flag rather than a number.
-                    boolean hasMore = meta.has("hasMore") && meta.get("hasMore").isJsonPrimitive()
-                            && meta.get("hasMore").getAsBoolean();
-                    lastPage = hasMore && !items.isEmpty() ? requested + 1 : requested;
-                } else {
-                    // The service caps its own paging: twenty entries per page, twenty-five pages.
-                    lastPage = Math.max(requested, intOr(meta, "last_page", requested));
-                }
+                // The service caps its own paging: twenty entries per page, twenty-five pages.
+                int lastPage = Math.max(requested, intOr(meta, "last_page", requested));
                 return new ElyByCatalogService.CatalogPage(items, requested, lastPage, total);
             } catch (ElyByCatalogService.CatalogException failure) {
                 throw failure;
@@ -134,6 +112,75 @@ public final class CraftyCatalogService {
                 throw new ElyByCatalogService.CatalogException("Malformed Crafty catalog response", malformed);
             }
         });
+    }
+
+    /** Read enough trending pages to fill a screen of the grid, and report whether more remain. */
+    private ElyByCatalogService.CatalogPage readTrending(int logicalPage, Sort order, int days) {
+        int first = (logicalPage - 1) * TRENDING_PAGES_PER_SCREEN + 1;
+        List<ElyByCatalogService.CatalogItem> items = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        boolean hasMore = false;
+        for (int page = first; page < first + TRENDING_PAGES_PER_SCREEN; page++) {
+            try {
+                JsonObject root = fetchJson(TRENDING_BASE + "?sort=" + order.order + "&days=" + days
+                        + "&limit=" + TRENDING_PAGE_SIZE + "&page=" + page);
+                for (ElyByCatalogService.CatalogItem item : parseRows(root.get("data"))) {
+                    if (seen.add(item.skinUrl)) {
+                        items.add(item);
+                    }
+                }
+                JsonObject meta = metaOf(root);
+                hasMore = meta.has("hasMore") && meta.get("hasMore").isJsonPrimitive()
+                        && meta.get("hasMore").getAsBoolean();
+                if (!hasMore) {
+                    break;
+                }
+            } catch (ElyByCatalogService.CatalogException failure) {
+                if (items.isEmpty()) throw failure;
+                break;
+            } catch (RuntimeException malformed) {
+                if (items.isEmpty()) {
+                    throw new ElyByCatalogService.CatalogException("Malformed Crafty catalog response", malformed);
+                }
+                break;
+            }
+        }
+        return new ElyByCatalogService.CatalogPage(items, logicalPage,
+                hasMore ? logicalPage + 1 : logicalPage, items.size());
+    }
+
+    private static JsonObject fetchJson(String url) {
+        byte[] body = read(url, MAX_JSON_BYTES);
+        return JsonParser.parseString(new String(body, StandardCharsets.UTF_8)).getAsJsonObject();
+    }
+
+    /** The data rows of a response, skipping any row that cannot be read. */
+    private static List<ElyByCatalogService.CatalogItem> parseRows(JsonElement rowsElement) {
+        if (rowsElement == null || !rowsElement.isJsonArray()) {
+            throw new ElyByCatalogService.CatalogException("Malformed Crafty catalog response", null);
+        }
+        JsonArray rows = rowsElement.getAsJsonArray();
+        List<ElyByCatalogService.CatalogItem> items = new ArrayList<>(rows.size());
+        for (JsonElement row : rows) {
+            if (!row.isJsonObject()) continue;
+            JsonObject object = row.getAsJsonObject();
+            try {
+                String hash = string(object, "hash");
+                if (!hash.matches("[0-9a-fA-F]{64}")) continue;
+                // The screen treats every item as a texture reference it can download.
+                items.add(new ElyByCatalogService.CatalogItem(hash.hashCode() & 0xFFFFFFFFL,
+                        REF_PREFIX + hash, booleanOrFalse(object, "slim"),
+                        firstPlayer(object), intOr(object, "players_count", 0)));
+            } catch (Exception skipped) {
+                // A malformed row must not abort the page.
+            }
+        }
+        return items;
+    }
+
+    private static JsonObject metaOf(JsonObject root) {
+        return root.has("meta") && root.get("meta").isJsonObject()
+                ? root.getAsJsonObject("meta") : new JsonObject();
     }
 
     /** Resolve a {@code crafty:<hash>} reference to the skin's PNG bytes, from cache when possible. */

@@ -61,7 +61,7 @@ public class ElyByCatalogScreen extends Screen {
     private static final int MAX_TILE = 96;
     private static final int GAP = 8;
     private static final int HEADER = 42;
-    private static final int FOOTER = 78;
+    private static final int FOOTER = 50;
     private static final int TEXT_COLOR = 0xFFF0F0F0;
     private static final int MUTED_COLOR = 0xFFA0A0A0;
     private static final int TILE_BACKGROUND = 0x50000000;
@@ -154,13 +154,12 @@ public class ElyByCatalogScreen extends Screen {
         int buttonWidth = 58;
         int step = buttonWidth + 4;
         int center = this.width / 2;
-        int rowX = center - (buttonWidth * 4 + 3 * 4) / 2;
-        int topY = this.height - FOOTER + 8;
-        int bottomY = topY + 24;
+        int rowX = center - (buttonWidth * 6 + 5 * 4) / 2;
+        int buttonY = this.height - FOOTER + 14;
 
         sourceButton = Button.builder(Component.literal(source.label),
                         button -> switchSource())
-                .bounds(rowX, topY, buttonWidth, 20)
+                .bounds(rowX, buttonY, buttonWidth, 20)
                 .build();
         sourceButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.source_tip")));
         addRenderableWidget(sourceButton);
@@ -171,7 +170,7 @@ public class ElyByCatalogScreen extends Screen {
                     updatePagingButtons();
                     loadPage(1, 0);
                 })
-                .bounds(rowX + step, topY, buttonWidth, 20)
+                .bounds(rowX + step, buttonY, buttonWidth, 20)
                 .build();
         sortButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.sort_tip")));
         addRenderableWidget(sortButton);
@@ -181,27 +180,27 @@ public class ElyByCatalogScreen extends Screen {
                     windowButton.setMessage(windowLabel());
                     loadPage(1, 0);
                 })
-                .bounds(rowX + 2 * step, topY, buttonWidth, 20)
+                .bounds(rowX + 2 * step, buttonY, buttonWidth, 20)
                 .build();
         windowButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.window_tip")));
         addRenderableWidget(windowButton);
 
-        addRenderableWidget(Button.builder(Component.translatable("quickskin.button.close"),
-                        button -> onClose())
-                .bounds(rowX + 3 * step, topY, buttonWidth, 20)
-                .build());
-
         previousButton = Button.builder(Component.translatable("quickskin.elyby.previous"),
                         button -> changeScreen(-1))
-                .bounds(center - buttonWidth - 2, bottomY, buttonWidth, 20)
+                .bounds(rowX + 3 * step, buttonY, buttonWidth, 20)
                 .build();
         addRenderableWidget(previousButton);
 
         nextButton = Button.builder(Component.translatable("quickskin.elyby.next"),
                         button -> changeScreen(1))
-                .bounds(center + 2, bottomY, buttonWidth, 20)
+                .bounds(rowX + 4 * step, buttonY, buttonWidth, 20)
                 .build();
         addRenderableWidget(nextButton);
+
+        addRenderableWidget(Button.builder(Component.translatable("quickskin.button.close"),
+                        button -> onClose())
+                .bounds(rowX + 5 * step, buttonY, buttonWidth, 20)
+                .build());
 
         updatePagingButtons();
         if (pageItems.isEmpty() && !loading) {
