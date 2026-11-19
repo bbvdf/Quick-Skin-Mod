@@ -424,11 +424,14 @@ public final class MenuIntegration {
                 animationButtons.clear();
                 isAnimationDropdownOpen = false;
 
-                // Only add animation buttons on title screen, not in-game (pause menu)
-                if ("title".equals(screenType)) {
+                // Animation buttons on the title screen and in the pause menu, so a pose picked in
+                // one carries over to the other
+                if ("title".equals(screenType) || "pause".equals(screenType)) {
                     // Create animation toggle button (right of rotate button, or above it beside a compact button)
                     int animToggleWidth = 20;
-                    int animToggleX = compactButton ? rotateButtonX : buttonX + buttonWidth - animToggleWidth;
+                    int animToggleX = "pause".equals(screenType)
+                            ? rotateButtonX + rotateButtonSize + spacing
+                            : (compactButton ? rotateButtonX : buttonX + buttonWidth - animToggleWidth);
                     int animToggleY = compactButton ? rotateButtonY - rotateButtonSize - spacing : rotateButtonY;
 
                     animationToggleButton = Button.builder(
