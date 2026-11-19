@@ -552,14 +552,15 @@ public class ElyByCatalogScreen extends Screen {
         // The renderer scales a 32-unit model by scale/16, so the drawn height is 2*scale pixels
         float figureScale = Math.max(4.0F, (tile - 6.0F) / 2.0F);
         // The hovered tile turns with the pointer the way the site's cards do: across the tile it
-        // looks left and right up to 45 degrees, up and down up to 30, and it eases back to face
-        // the viewer when the pointer leaves. The easing is what the site's damping does.
+        // swings a full half turn either way, so the pointer can walk it round to its back, and up
+        // and down up to 30. It eases back to face the viewer when the pointer leaves; the easing
+        // is what the site's damping does.
         float targetYaw = 0.0F;
         float targetPitch = 0.0F;
         if (mouseX >= left && mouseX < left + tile && mouseY >= top && mouseY < top + tile) {
             float across = (mouseX - (left + tile / 2.0F)) / (tile / 2.0F);
             float down = (mouseY - (top + tile / 2.0F)) / (tile / 2.0F);
-            targetYaw = Math.max(-1.0F, Math.min(1.0F, across)) * 45.0F;
+            targetYaw = Math.max(-1.0F, Math.min(1.0F, across)) * 180.0F;
             targetPitch = Math.max(-1.0F, Math.min(1.0F, down)) * 30.0F;
         }
         float[] angle = angles.computeIfAbsent(item.id, key -> new float[2]);
