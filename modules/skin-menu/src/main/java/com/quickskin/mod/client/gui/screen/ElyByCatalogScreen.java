@@ -406,8 +406,8 @@ public class ElyByCatalogScreen extends Screen {
         PreviewPlayerData data = previews.computeIfAbsent(item.id, key -> new PreviewPlayerData());
         data.setSkinLocation(texture);
         data.setModelType(item.slim ? "slim" : "classic");
-        // A player model is 32 units tall; this keeps it inside the tile with a little air
-        float figureScale = Math.max(0.6F, (tile - 10.0F) / 32.0F);
+        // The renderer scales a 32-unit model by scale/16, so the drawn height is 2*scale pixels
+        float figureScale = Math.max(4.0F, (tile - 6.0F) / 2.0F);
         PlayerModelRenderer.renderPlayerModel(graphics, left + tile / 2, top + tile - 2,
                 figureScale, 45.0F, data, 0, 0, false);
     }
