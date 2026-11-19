@@ -98,9 +98,19 @@ public final class ElyByCatalogService {
     }
 
     public CompletableFuture<CatalogPage> fetchPage(int page) {
+        return fetchPage(page, false);
+    }
+
+    /**
+     * Fetch one catalog page. {@code byTime} asks for the newest uploads first; without it the
+     * catalog answers in its own order, which is by wearers. This is the same {@code sort} the
+     * website's own skins page uses.
+     */
+    public CompletableFuture<CatalogPage> fetchPage(int page, boolean byTime) {
         int requested = Math.max(1, page);
         return ClientIoExecutor.supplyAsync(() -> {
-            byte[] body = read(CATALOG_BASE + "?page=" + requested, MAX_JSON_BYTES);
+            byte[] body = read(CATALOG_BASE + "?page=" + requested + (byTime ? "&sort=time" : ""),
+                    MAX_JSON_BYTES);
             try {
                 JsonObject root = JsonParser.parseString(new String(body, StandardCharsets.UTF_8))
                         .getAsJsonObject();

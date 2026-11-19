@@ -47,6 +47,15 @@ class ElyByCatalogServiceTest {
     }
 
     @Test
+    void newestOrderRequestsTheTimeSort() throws Exception {
+        var transport = new Transport(new Reply(200, utf8(
+                "{\"items\":[],\"total_items\":0,\"current\":1,\"last\":1}")));
+        transport.service.fetchPage(2, true).get(5, TimeUnit.SECONDS);
+        assertEquals("https://ely.by/api/legacy/skins?page=2&sort=time", transport.urls.get(0),
+                "the catalog only sorts when asked with its own sort=time");
+    }
+
+    @Test
     void emptyPageIsAnEmptyList() throws Exception {
         var transport = new Transport(new Reply(200, utf8(
                 "{\"items\":[],\"total_items\":0,\"current\":1,\"last\":1}")));

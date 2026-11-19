@@ -443,5 +443,5 @@
   "quickskin.elyby.next": "下一页",
   "quickskin.elyby.sort_hot": "最热",
   "quickskin.elyby.sort_new": "最新",
-  "quickskin.elyby.sort_tip": "只对当前这一页排序：Ely.by 的接口不支持排序参数"
+  "quickskin.elyby.sort_tip": "切换排序：最热（按穿着人数）/ 最新（按上传时间）"
 }

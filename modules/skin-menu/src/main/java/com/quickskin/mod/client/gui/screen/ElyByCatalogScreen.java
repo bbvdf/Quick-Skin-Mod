@@ -133,7 +133,7 @@ public class ElyByCatalogScreen extends Screen {
         sortButton = Button.builder(sortLabel(), button -> {
                     newestFirst = !newestFirst;
                     sortButton.setMessage(sortLabel());
-                    sortPage();
+                    loadPage(1, 0);
                 })
                 .bounds(center - 2 * buttonWidth - 18, buttonY, buttonWidth, 20)
                 .build();
@@ -213,7 +213,7 @@ public class ElyByCatalogScreen extends Screen {
         releaseFaces();
         requested.clear();
         updatePagingButtons();
-        ElyByCatalogService.getInstance().fetchPage(page)
+        ElyByCatalogService.getInstance().fetchPage(page, newestFirst)
                 .thenAccept(loaded -> {
                     if (this.minecraft != null) {
                         this.minecraft.execute(() -> acceptPage(loaded, targetScreen));
@@ -237,11 +237,6 @@ public class ElyByCatalogScreen extends Screen {
         failed = false;
         pageItems = loaded.items;
         catalogPage = loaded.page;
-        if (newestFirst && !pageItems.isEmpty()) {
-            List<CatalogItem> sorted = new java.util.ArrayList<>(pageItems);
-            sorted.sort((left, right) -> Long.compare(right.id, left.id));
-            pageItems = sorted;
-        }
         lastCatalogPage = loaded.lastPage;
         totalItems = loaded.totalItems;
         screenIndex = targetScreen < 0 ? screenCount() - 1
@@ -261,26 +256,6 @@ public class ElyByCatalogScreen extends Screen {
 
     private Component sortLabel() {
         return Component.translatable(newestFirst ? "quickskin.elyby.sort_new" : "quickskin.elyby.sort_hot");
-    }
-
-    /**
-     * Orders the loaded catalog page. The endpoint itself ignores every sort parameter and always
-     * answers by wearers, so this only reorders the 40 entries already fetched.
-     */
-    private void sortPage() {
-        if (pageItems.isEmpty()) {
-            return;
-        }
-        List<CatalogItem> sorted = new java.util.ArrayList<>(pageItems);
-        if (newestFirst) {
-            sorted.sort((left, right) -> Long.compare(right.id, left.id));
-        } else {
-            sorted.sort((left, right) -> Integer.compare(right.wearers, left.wearers));
-        }
-        pageItems = sorted;
-        screenIndex = 0;
-        requestVisibleFaces();
-        updatePagingButtons();
     }
 
     /** Downloads the textures of the entries on this screen, and nothing else. */
