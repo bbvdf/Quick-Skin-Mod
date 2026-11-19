@@ -55,8 +55,8 @@ import java.util.concurrent.CompletableFuture;
 @Environment(EnvType.CLIENT)
 public class ElyByCatalogScreen extends Screen {
 
-    private static final int ROWS = 3;
-    private static final int MAX_COLUMNS = 6;
+    private static final int ROWS = 4;
+    private static final int MAX_COLUMNS = 5;
     private static final int MIN_TILE = 28;
     private static final int MAX_TILE = 96;
     private static final int GAP = 8;
