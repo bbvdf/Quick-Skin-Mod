@@ -1071,6 +1071,8 @@ public class PlayerModelRenderer {
      * entity path draws the cached player's own skin and equipment whatever the data says.
      */
     private static final ThreadLocal<Boolean> FORCE_MANUAL = new ThreadLocal<>();
+    /** Up/down tilt in degrees for the same call, 0 when the caller wants the plain preview. */
+    private static final ThreadLocal<Float> FORCED_PITCH = new ThreadLocal<>();
 
     public static void renderPlayerModel(
 //? if <26.1 {
@@ -1086,14 +1088,17 @@ public class PlayerModelRenderer {
             int mouseX,
             int mouseY,
             boolean followMouse,
-            float forcedBodyYaw
+            float forcedBodyYaw,
+            float forcedPitch
     ) {
         FORCED_BODY_YAW.set(forcedBodyYaw);
+        FORCED_PITCH.set(forcedPitch);
         FORCE_MANUAL.set(Boolean.TRUE);
         try {
             renderPlayerModel(graphics, x, y, scale, yRotation, playerData, mouseX, mouseY, followMouse);
         } finally {
             FORCED_BODY_YAW.remove();
+            FORCED_PITCH.remove();
             FORCE_MANUAL.remove();
         }
     }
@@ -1291,7 +1296,9 @@ public class PlayerModelRenderer {
         // rotation. The renderer turns the model by 180 - bodyYaw itself, which adds up to the
         // 180 - targetRotation it applied when the preview set the body yaw.
         java.lang.Float forcedYaw = FORCED_BODY_YAW.get();
+        java.lang.Float forcedPitch = FORCED_PITCH.get();
         Quaternionf previewPose = new Quaternionf(quaternionXZ)
+                .rotateX((float) Math.toRadians(forcedPitch != null ? -forcedPitch : 0.0F))
                 .rotateY((float) Math.toRadians(forcedYaw != null
                         ? forcedYaw - 180.0F
                         : bodyYaw - targetRotation));
@@ -2032,7 +2039,7 @@ public class PlayerModelRenderer {
                 submitted,
                 playerData.getSkinLocation(),
                 submittedScale,
-                rotationXNudge,
+                FORCED_PITCH.get() != null ? FORCED_PITCH.get() : rotationXNudge,
                 submittedRotationY,
                 -1.0625f,
                 x - boxHalfWidth,
@@ -2090,7 +2097,7 @@ public class PlayerModelRenderer {
                 renderModel,
                 playerData.getSkinLocation(),
                 (float)(int) scale * swapScale + scaleNudge,
-                0.0f,
+                FORCED_PITCH.get() != null ? FORCED_PITCH.get() : 0.0f,
                 FORCED_BODY_YAW.get() != null ? FORCED_BODY_YAW.get() : -45.0f + yRotation,
                 -1.0625f,
                 x - boxHalfWidth,

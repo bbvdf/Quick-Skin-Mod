@@ -64,6 +64,8 @@ public class ElyByCatalogScreen extends Screen {
     private static final int MUTED_COLOR = 0xFFA0A0A0;
     private static final int TILE_BACKGROUND = 0x50000000;
     private static final int TILE_HOVER = 0xD0FFFFFF;
+    /** How much of the remaining angle each frame takes, the site's easing in a simpler form. */
+    private static final float DAMPING = 0.25F;
 
     private final Screen parent;
 
@@ -92,6 +94,8 @@ public class ElyByCatalogScreen extends Screen {
     private final Set<Long> requested = new HashSet<>();
     /** One preview model per entry, reused every frame so a tile costs a draw and not an allocation. */
     private final Map<Long, PreviewPlayerData> previews = new HashMap<>();
+    /** Each tile's current {yaw, pitch}, eased toward the pointer every frame. */
+    private final Map<Long, float[]> angles = new HashMap<>();
 
     private Button previousButton;
     private Button nextButton;
@@ -312,6 +316,7 @@ public class ElyByCatalogScreen extends Screen {
         faceSizes.clear();
         faceBytes.clear();
         previews.clear();
+        angles.clear();
     }
 
     //? if <26.1 {
@@ -409,15 +414,22 @@ public class ElyByCatalogScreen extends Screen {
 
         // The renderer scales a 32-unit model by scale/16, so the drawn height is 2*scale pixels
         float figureScale = Math.max(4.0F, (tile - 6.0F) / 2.0F);
-        // The hovered tile turns with the pointer the way the site's cards do: the pointer at
-        // the tile's left edge looks left, at its right edge looks right, elsewhere it faces us
-        float yaw = 0.0F;
+        // The hovered tile turns with the pointer the way the site's cards do: across the tile it
+        // looks left and right up to 45 degrees, up and down up to 30, and it eases back to face
+        // the viewer when the pointer leaves. The easing is what the site's damping does.
+        float targetYaw = 0.0F;
+        float targetPitch = 0.0F;
         if (mouseX >= left && mouseX < left + tile && mouseY >= top && mouseY < top + tile) {
-            float offset = (mouseX - (left + tile / 2.0F)) / (tile / 2.0F);
-            yaw = Math.max(-1.0F, Math.min(1.0F, offset)) * 45.0F;
+            float across = (mouseX - (left + tile / 2.0F)) / (tile / 2.0F);
+            float down = (mouseY - (top + tile / 2.0F)) / (tile / 2.0F);
+            targetYaw = Math.max(-1.0F, Math.min(1.0F, across)) * 45.0F;
+            targetPitch = Math.max(-1.0F, Math.min(1.0F, down)) * 30.0F;
         }
+        float[] angle = angles.computeIfAbsent(item.id, key -> new float[2]);
+        angle[0] += (targetYaw - angle[0]) * DAMPING;
+        angle[1] += (targetPitch - angle[1]) * DAMPING;
         PlayerModelRenderer.renderPlayerModel(graphics, left + tile / 2, top + tile + 2,
-                figureScale, 45.0F, data, mouseX, mouseY, true, yaw);
+                figureScale, 45.0F, data, mouseX, mouseY, true, angle[0], angle[1]);
     }
 
     private void blitPart(
