@@ -452,5 +452,8 @@
   "quickskin.elyby.empty": "No skins on this page",
   "quickskin.elyby.applying": "Downloading and applying...",
   "quickskin.elyby.previous": "Previous",
-  "quickskin.elyby.next": "Next"
+  "quickskin.elyby.next": "Next",
+  "quickskin.elyby.sort_hot": "Popular",
+  "quickskin.elyby.sort_new": "Newest",
+  "quickskin.elyby.sort_tip": "Orders this page only: the Ely.by catalog has no sort parameter"
 }

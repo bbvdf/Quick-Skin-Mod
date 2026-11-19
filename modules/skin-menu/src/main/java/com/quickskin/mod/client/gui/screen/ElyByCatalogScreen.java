@@ -23,6 +23,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 //?}
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.network.chat.Component;
@@ -90,6 +91,9 @@ public class ElyByCatalogScreen extends Screen {
 
     private Button previousButton;
     private Button nextButton;
+    private Button sortButton;
+    /** False sorts the page by wearers (the catalog's own order), true by newest id. */
+    private boolean newestFirst;
 
     public ElyByCatalogScreen(Screen parent) {
 //? if <1.21 {
@@ -121,6 +125,16 @@ public class ElyByCatalogScreen extends Screen {
                 .bounds(center + 6, buttonY, buttonWidth, 20)
                 .build();
         addRenderableWidget(nextButton);
+
+        sortButton = Button.builder(sortLabel(), button -> {
+                    newestFirst = !newestFirst;
+                    sortButton.setMessage(sortLabel());
+                    sortPage();
+                })
+                .bounds(center - 2 * buttonWidth - 18, buttonY, buttonWidth, 20)
+                .build();
+        sortButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.sort_tip")));
+        addRenderableWidget(sortButton);
 
         addRenderableWidget(Button.builder(Component.translatable("quickskin.button.close"),
                         button -> onClose())
@@ -219,6 +233,11 @@ public class ElyByCatalogScreen extends Screen {
         failed = false;
         pageItems = loaded.items;
         catalogPage = loaded.page;
+        if (newestFirst && !pageItems.isEmpty()) {
+            List<CatalogItem> sorted = new java.util.ArrayList<>(pageItems);
+            sorted.sort((left, right) -> Long.compare(right.id, left.id));
+            pageItems = sorted;
+        }
         lastCatalogPage = loaded.lastPage;
         totalItems = loaded.totalItems;
         screenIndex = targetScreen < 0 ? screenCount() - 1
@@ -234,6 +253,30 @@ public class ElyByCatalogScreen extends Screen {
         if (nextButton != null) {
             nextButton.active = !loading && (screenIndex < screenCount() - 1 || catalogPage < lastCatalogPage);
         }
+    }
+
+    private Component sortLabel() {
+        return Component.translatable(newestFirst ? "quickskin.elyby.sort_new" : "quickskin.elyby.sort_hot");
+    }
+
+    /**
+     * Orders the loaded catalog page. The endpoint itself ignores every sort parameter and always
+     * answers by wearers, so this only reorders the 40 entries already fetched.
+     */
+    private void sortPage() {
+        if (pageItems.isEmpty()) {
+            return;
+        }
+        List<CatalogItem> sorted = new java.util.ArrayList<>(pageItems);
+        if (newestFirst) {
+            sorted.sort((left, right) -> Long.compare(right.id, left.id));
+        } else {
+            sorted.sort((left, right) -> Integer.compare(right.wearers, left.wearers));
+        }
+        pageItems = sorted;
+        screenIndex = 0;
+        requestVisibleFaces();
+        updatePagingButtons();
     }
 
     /** Downloads the textures of the entries on this screen, and nothing else. */
@@ -414,9 +457,13 @@ public class ElyByCatalogScreen extends Screen {
             //?}
             Identifier texture, int x, int y, int sourceWidth, int sourceHeight,
             int u, int v, float scale, int textureWidth, int textureHeight) {
+        // The UVs above are the 64x64 layout; an HD sheet stores the same parts twice as far out
+        float uv = textureWidth / 64.0F;
         GuiCompat.blit(graphics, texture, x, y,
                 Math.max(1, Math.round(sourceWidth * scale)), Math.max(1, Math.round(sourceHeight * scale)),
-                u, v, sourceWidth, sourceHeight, textureWidth, textureHeight);
+                Math.round(u * uv), Math.round(v * uv),
+                Math.round(sourceWidth * uv), Math.round(sourceHeight * uv),
+                textureWidth, textureHeight);
     }
 
     /** The visible entry index under the cursor, or -1. */
@@ -506,6 +553,8 @@ public class ElyByCatalogScreen extends Screen {
             QuickSkinInfo.LOGGER.warn("The saved Ely.by skin of {} has no catalogue entry", item.id);
             return;
         }
+        // Remember the choice even on the title screen, where there is no player to dress yet
+        com.quickskin.mod.client.compat.CpmModelWorkflow.activateSkin(metadata.hash());
         if (this.minecraft != null && this.minecraft.player != null) {
             // "classic" and "slim" are the local preference values; "default" is Mojang's spelling
             PlayerAppearanceService.getInstance().applySkin(this.minecraft.player.getUUID(),
