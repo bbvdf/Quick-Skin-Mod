@@ -382,6 +382,10 @@ public final class MenuIntegration {
                     keepDefaultPreviewClearOfSplash(playerWidget, screen.width);
                 } else if ("pause".equals(screenType)) {
                     playerWidget.setContext(com.quickskin.mod.client.gui.widget.PlayerWidget.WidgetContext.PAUSE_MENU);
+                    // Pose our own model, as the title screen does, so the pause preview breathes and
+                    // takes a picked pose. What the player wears and holds still comes from the
+                    // player: the preview's equipment pass draws the live armour and held item.
+                    playerWidget.setOwnPose(true);
                 }
                 // With FancyMenu, report the model box so its layout editor can select, hide, move
                 // and resize the preview under a stable identifier. Without it nothing changes.
