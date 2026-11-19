@@ -307,8 +307,8 @@
 
   "quickskin.button.confirm": "Confirm",
   "quickskin.button.skin_websites": "Skin Websites",
-  "quickskin.button.website_normal": "Normal",
-  "quickskin.button.website_hd": "HD",
+  "quickskin.button.website_crafty": "Crafty",
+  "quickskin.button.website_elyby": "Ely.by",
   "quickskin.menu.skins": "Skins",
   "quickskin.menu.body_width": "Body: %s",
   "quickskin.tooltip.body_width": "Arm width of the previewed skin",

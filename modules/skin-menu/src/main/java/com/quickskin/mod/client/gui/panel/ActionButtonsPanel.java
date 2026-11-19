@@ -66,8 +66,8 @@ public class ActionButtonsPanel extends AbstractWidget {
      */
     public record ActionCallbacks(
         Runnable onBodyWidth,
-        Runnable onSkinWebsite,
-        Runnable onHdSkinWebsite,
+        Runnable onCraftyLibrary,
+        Runnable onElyByLibrary,
         Runnable onCape,
         Runnable onConfirm,
         Runnable onUpload
@@ -135,24 +135,24 @@ public class ActionButtonsPanel extends AbstractWidget {
         int choiceY = bubbleY + BUBBLE_PADDING;
         normalWebsiteButton = new ConfirmButton(
             choiceX, choiceY, choiceWidth, choiceHeight,
-            Component.translatable("quickskin.button.website_normal"),
+            Component.translatable("quickskin.button.website_crafty"),
             button -> {
                 setWebsitesOpen(false);
-                callbacks.onSkinWebsite().run();
+                callbacks.onCraftyLibrary().run();
             }
         );
-        normalWebsiteButton.setTooltip(Tooltip.create(Component.translatable("quickskin.button.skin_website")));
+        normalWebsiteButton.setTooltip(Tooltip.create(Component.translatable("quickskin.button.website_crafty")));
         screen.registerForegroundControl(normalWebsiteButton);
 
         hdWebsiteButton = new ConfirmButton(
             choiceX, choiceY + choiceHeight + SPACING, choiceWidth, choiceHeight,
-            Component.translatable("quickskin.button.website_hd"),
+            Component.translatable("quickskin.button.website_elyby"),
             button -> {
                 setWebsitesOpen(false);
-                callbacks.onHdSkinWebsite().run();
+                callbacks.onElyByLibrary().run();
             }
         );
-        hdWebsiteButton.setTooltip(Tooltip.create(Component.translatable("quickskin.button.hd_skin_website")));
+        hdWebsiteButton.setTooltip(Tooltip.create(Component.translatable("quickskin.button.website_elyby")));
         screen.registerForegroundControl(hdWebsiteButton);
 
         capeButton = new IconButton(
@@ -255,8 +255,8 @@ public class ActionButtonsPanel extends AbstractWidget {
     private static int choiceWidth(net.minecraft.client.gui.Font font) {
         int choiceHeight = ConfirmButton.heightForLabel(CHOICE_LABEL_SCALE);
         return Math.max(
-                ConfirmButton.fittingWidth(font, Component.translatable("quickskin.button.website_normal"), choiceHeight),
-                ConfirmButton.fittingWidth(font, Component.translatable("quickskin.button.website_hd"), choiceHeight));
+                ConfirmButton.fittingWidth(font, Component.translatable("quickskin.button.website_crafty"), choiceHeight),
+                ConfirmButton.fittingWidth(font, Component.translatable("quickskin.button.website_elyby"), choiceHeight));
     }
 
     private static int bubbleWidth(int choiceWidth) {

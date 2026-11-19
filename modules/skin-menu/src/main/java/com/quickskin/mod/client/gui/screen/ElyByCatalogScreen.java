@@ -116,16 +116,16 @@ public class ElyByCatalogScreen extends Screen {
     private Button sourceButton;
     private Button windowButton;
     /** Which public catalog this screen browses. */
-    private CatalogSource source = CatalogSource.ELY;
-    /** Index into the current source's orders: Ely.by has two, Crafty six. */
-    private int sortIndex;
+    private CatalogSource source = CatalogSource.CRAFTY;
+    /** Index into the current source's orders: Crafty opens on "hot right now". */
+    private int sortIndex = 5;
     /** Index into WINDOW_DAYS, for the trending orders only. */
     private int windowIndex = 1;
 
-    /** The public skin catalogs this screen can browse. */
+    /** The public skin catalogs this screen can browse, Crafty first. */
     private enum CatalogSource {
-        ELY("Ely.by", 2),
-        CRAFTY("Crafty", 6);
+        CRAFTY("Crafty", 6),
+        ELY("Ely.by", 2);
 
         private final String label;
         private final int orders;
@@ -141,8 +141,15 @@ public class ElyByCatalogScreen extends Screen {
     }
 
     public ElyByCatalogScreen(Screen parent) {
+        this(parent, true);
+    }
+
+    /** {@code craftyFirst} picks the catalog the screen opens on; Crafty is the default. */
+    public ElyByCatalogScreen(Screen parent, boolean craftyFirst) {
         super(Component.translatable("quickskin.elyby.title"));
         this.parent = parent;
+        this.source = craftyFirst ? CatalogSource.CRAFTY : CatalogSource.ELY;
+        this.sortIndex = craftyFirst ? 5 : 0;
     }
 
     @Override

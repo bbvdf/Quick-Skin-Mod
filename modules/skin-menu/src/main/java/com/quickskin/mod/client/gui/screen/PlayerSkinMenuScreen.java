@@ -542,8 +542,8 @@ public class PlayerSkinMenuScreen extends Screen implements com.quickskin.mod.cl
                 confirmX, confirmY, confirmWidth, confirmHeight);
         ActionButtonsPanel.ActionCallbacks callbacks = new ActionButtonsPanel.ActionCallbacks(
                 this::cycleBodyWidth,
-                () -> openWebsite("https://laby.net/skins?order=trending_30d"),
-                () -> openWebsite("https://mcskins.top/128x128/"),
+                () -> openCatalog(true),
+                () -> openCatalog(false),
                 () -> {
                     // Open cape selection screen
                     if (minecraft != null) {
@@ -688,6 +688,18 @@ public class PlayerSkinMenuScreen extends Screen implements com.quickskin.mod.cl
             com.mojang.blaze3d.Blaze3D.openUri(java.net.URI.create(url));
             //?}
         }
+    }
+
+    /** Open the skin library on Crafty ({@code crafty}) or on Ely.by. */
+    private void openCatalog(boolean crafty) {
+        if (this.minecraft == null) {
+            return;
+        }
+//? if <26.2 {
+        this.minecraft.setScreen(new ElyByCatalogScreen(this, crafty));
+//?} else {
+        this.minecraft.gui.setScreen(new ElyByCatalogScreen(this, crafty));
+//?}
     }
 
     /**
