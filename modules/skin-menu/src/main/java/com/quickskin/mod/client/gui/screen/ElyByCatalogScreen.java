@@ -370,7 +370,7 @@ public class ElyByCatalogScreen extends Screen {
             int top = gridY + row * (tile + GAP);
 
             graphics.fill(left, top, left + tile, top + tile, TILE_BACKGROUND);
-            drawFigure(graphics, visible.get(index), left, top);
+            drawFigure(graphics, visible.get(index), left, top, mouseX, mouseY);
             if (index == hovered) {
                 graphics.fill(left - 1, top - 1, left + tile + 1, top + 1, TILE_HOVER);
                 graphics.fill(left - 1, top + tile, left + tile + 1, top + tile + 1, TILE_HOVER);
@@ -395,7 +395,7 @@ public class ElyByCatalogScreen extends Screen {
             //?} else {
             GuiGraphicsExtractor graphics,
             //?}
-            CatalogItem item, int left, int top) {
+            CatalogItem item, int left, int top, int mouseX, int mouseY) {
         Identifier texture = faces.get(item.id);
         if (texture == null) {
             int placeholder = tile / 3;
@@ -409,8 +409,15 @@ public class ElyByCatalogScreen extends Screen {
 
         // The renderer scales a 32-unit model by scale/16, so the drawn height is 2*scale pixels
         float figureScale = Math.max(4.0F, (tile - 6.0F) / 2.0F);
+        // The hovered tile turns with the pointer the way the site's cards do: the pointer at
+        // the tile's left edge looks left, at its right edge looks right, elsewhere it faces us
+        float yaw = 0.0F;
+        if (mouseX >= left && mouseX < left + tile && mouseY >= top && mouseY < top + tile) {
+            float offset = (mouseX - (left + tile / 2.0F)) / (tile / 2.0F);
+            yaw = Math.max(-1.0F, Math.min(1.0F, offset)) * 45.0F;
+        }
         PlayerModelRenderer.renderPlayerModel(graphics, left + tile / 2, top + tile + 2,
-                figureScale, 45.0F, data, 0, 0, false, 45.0F);
+                figureScale, 45.0F, data, mouseX, mouseY, true, yaw);
     }
 
     private void blitPart(

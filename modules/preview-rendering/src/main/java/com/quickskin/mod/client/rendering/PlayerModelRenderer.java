@@ -2011,7 +2011,8 @@ public class PlayerModelRenderer {
         Lighting.setupFor3DItems();
 //?} else if <26.1 {
         float submittedScale = (float)(int) scale * swapScale + scaleNudge;
-        float submittedRotationY = -45.0f + yRotation;
+        java.lang.Float forcedYawManual = FORCED_BODY_YAW.get();
+        float submittedRotationY = forcedYawManual != null ? forcedYawManual : -45.0f + yRotation;
         // A CPM model is drawn in the pass in the skin's place: the pass is handed a model that
         // draws nothing, and no cape hangs in the air while CPM is still building the model
         boolean cpmReplacesSkin = cpmModelReplacesSkin(playerData);
@@ -2082,7 +2083,7 @@ public class PlayerModelRenderer {
                 playerData.getSkinLocation(),
                 (float)(int) scale * swapScale + scaleNudge,
                 0.0f,
-                -45.0f + yRotation,
+                FORCED_BODY_YAW.get() != null ? FORCED_BODY_YAW.get() : -45.0f + yRotation,
                 -1.0625f,
                 x - boxHalfWidth,
                 y - boxHeight,
