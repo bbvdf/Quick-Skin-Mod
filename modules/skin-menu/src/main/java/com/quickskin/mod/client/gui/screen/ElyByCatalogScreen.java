@@ -55,10 +55,10 @@ import java.util.concurrent.CompletableFuture;
 @Environment(EnvType.CLIENT)
 public class ElyByCatalogScreen extends Screen {
 
-    private static final int ROWS = 4;
+    private static final int ROWS = 2;
     private static final int MAX_COLUMNS = 5;
     private static final int MIN_TILE = 28;
-    private static final int MAX_TILE = 96;
+    private static final int MAX_TILE = 150;
     private static final int GAP = 8;
     private static final int HEADER = 42;
     private static final int FOOTER = 50;
@@ -222,7 +222,7 @@ public class ElyByCatalogScreen extends Screen {
         gridWidth = columns * tile + (columns - 1) * GAP;
         gridHeight = ROWS * tile + (ROWS - 1) * GAP;
         gridX = (this.width - gridWidth) / 2;
-        gridY = HEADER;
+        gridY = HEADER + Math.max(0, (availableHeight - gridHeight) / 2);
     }
 
     private int perScreen() {
