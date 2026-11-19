@@ -433,8 +433,10 @@ public class ElyByCatalogScreen extends Screen {
         int bodyTop = oy + Math.round(8.0F * scale);
         int legTop = oy + Math.round(20.0F * scale);
 
-        // The 1.8 layout keeps the left arm and leg in the second half of a 64x64 sheet
-        if (textureHeight >= 64) {
+        // The 1.8 layout keeps the left arm and leg in the second half of a 64x64 sheet; a legacy
+        // 64x32 sheet has neither, so its left limbs reuse the right ones instead of going missing.
+        boolean legacy = textureHeight < 64;
+        if (!legacy) {
             blitPart(graphics, texture, ox, bodyTop, 4, 12, 36, 52, scale, textureWidth, textureHeight);
             blitPart(graphics, texture, bodyLeft, legTop, 4, 12, 20, 52, scale, textureWidth, textureHeight);
         }
@@ -442,6 +444,10 @@ public class ElyByCatalogScreen extends Screen {
                 4, 12, 44, 20, scale, textureWidth, textureHeight);
         blitPart(graphics, texture, ox + Math.round(8.0F * scale), legTop,
                 4, 12, 4, 20, scale, textureWidth, textureHeight);
+        if (legacy) {
+            blitPart(graphics, texture, ox, bodyTop, 4, 12, 44, 20, scale, textureWidth, textureHeight);
+            blitPart(graphics, texture, bodyLeft, legTop, 4, 12, 4, 20, scale, textureWidth, textureHeight);
+        }
         blitPart(graphics, texture, bodyLeft, bodyTop,
                 8, 12, 20, 20, scale, textureWidth, textureHeight);
         blitPart(graphics, texture, bodyLeft, oy,
