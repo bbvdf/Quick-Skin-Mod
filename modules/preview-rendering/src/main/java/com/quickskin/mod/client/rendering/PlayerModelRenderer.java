@@ -1066,6 +1066,11 @@ public class PlayerModelRenderer {
      * only way to give a GUI tile its own angle on versions that ignore the pose argument.
      */
     private static final ThreadLocal<Float> FORCED_BODY_YAW = new ThreadLocal<>();
+    /**
+     * Forces the hand-built model path, whose texture comes from the caller's player data. The
+     * entity path draws the cached player's own skin and equipment whatever the data says.
+     */
+    private static final ThreadLocal<Boolean> FORCE_MANUAL = new ThreadLocal<>();
 
     public static void renderPlayerModel(
 //? if <26.1 {
@@ -1084,10 +1089,12 @@ public class PlayerModelRenderer {
             float forcedBodyYaw
     ) {
         FORCED_BODY_YAW.set(forcedBodyYaw);
+        FORCE_MANUAL.set(Boolean.TRUE);
         try {
             renderPlayerModel(graphics, x, y, scale, yRotation, playerData, mouseX, mouseY, followMouse);
         } finally {
             FORCED_BODY_YAW.remove();
+            FORCE_MANUAL.remove();
         }
     }
 
@@ -1177,7 +1184,8 @@ public class PlayerModelRenderer {
         ensureModelsLoaded();
         // The live player cannot wear wings it may not have, so a preview of the elytra draws its own
         // model as well
-        if (playerData.isOwnPose() || playerData.isElytraPreview()) {
+        if (playerData.isOwnPose() || playerData.isElytraPreview()
+                || Boolean.TRUE.equals(FORCE_MANUAL.get())) {
             renderPlayerModelManual(graphics, x, y, scale, yRotation, playerData, mouseX, mouseY, followMouse);
             return;
         }
