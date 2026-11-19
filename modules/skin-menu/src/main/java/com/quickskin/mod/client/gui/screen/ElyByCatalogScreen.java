@@ -409,7 +409,7 @@ public class ElyByCatalogScreen extends Screen {
 
         // The renderer scales a 32-unit model by scale/16, so the drawn height is 2*scale pixels
         float figureScale = Math.max(4.0F, (tile - 6.0F) / 2.0F);
-        PlayerModelRenderer.renderPlayerModel(graphics, left + tile / 2, top + tile - 2,
+        PlayerModelRenderer.renderPlayerModel(graphics, left + tile / 2, top + tile + 2,
                 figureScale, 45.0F, data, 0, 0, false, 45.0F);
     }
 

@@ -1282,8 +1282,11 @@ public class PlayerModelRenderer {
         // The entity's pose: the flip, then the turn from the player's body yaw to the preview's
         // rotation. The renderer turns the model by 180 - bodyYaw itself, which adds up to the
         // 180 - targetRotation it applied when the preview set the body yaw.
+        java.lang.Float forcedYaw = FORCED_BODY_YAW.get();
         Quaternionf previewPose = new Quaternionf(quaternionXZ)
-                .rotateY((float) Math.toRadians(bodyYaw - targetRotation));
+                .rotateY((float) Math.toRadians(forcedYaw != null
+                        ? forcedYaw - 180.0F
+                        : bodyYaw - targetRotation));
         // Second quaternion: empty (no rotation)
         Quaternionf quaternionY = new Quaternionf();
 
@@ -1399,11 +1402,10 @@ public class PlayerModelRenderer {
                 livingState.boundingBoxWidth /= livingState.scale;
                 livingState.boundingBoxHeight /= livingState.scale;
                 livingState.scale = 1.0f;
-                java.lang.Float forced = FORCED_BODY_YAW.get();
-                if (forced != null) {
-                    // The renderer turns the body by 180 - bodyRot, so this yields the wanted facing
-                    livingState.bodyRot = 180.0F - forced;
-                    livingState.yRot = 180.0F - forced;
+                if (FORCED_BODY_YAW.get() != null) {
+                    // A forced facing replaces the player's own, so the call's pose owns the angle
+                    livingState.bodyRot = 0.0F;
+                    livingState.yRot = 0.0F;
                 }
             }
 
@@ -1459,11 +1461,10 @@ public class PlayerModelRenderer {
                 livingState.boundingBoxWidth /= livingState.scale;
                 livingState.boundingBoxHeight /= livingState.scale;
                 livingState.scale = 1.0f;
-                java.lang.Float forced = FORCED_BODY_YAW.get();
-                if (forced != null) {
-                    // The renderer turns the body by 180 - bodyRot, so this yields the wanted facing
-                    livingState.bodyRot = 180.0F - forced;
-                    livingState.yRot = 180.0F - forced;
+                if (FORCED_BODY_YAW.get() != null) {
+                    // A forced facing replaces the player's own, so the call's pose owns the angle
+                    livingState.bodyRot = 0.0F;
+                    livingState.yRot = 0.0F;
                 }
             }
 
@@ -1518,11 +1519,10 @@ public class PlayerModelRenderer {
                 livingState.boundingBoxWidth /= livingState.scale;
                 livingState.boundingBoxHeight /= livingState.scale;
                 livingState.scale = 1.0f;
-                java.lang.Float forced = FORCED_BODY_YAW.get();
-                if (forced != null) {
-                    // The renderer turns the body by 180 - bodyRot, so this yields the wanted facing
-                    livingState.bodyRot = 180.0F - forced;
-                    livingState.yRot = 180.0F - forced;
+                if (FORCED_BODY_YAW.get() != null) {
+                    // A forced facing replaces the player's own, so the call's pose owns the angle
+                    livingState.bodyRot = 0.0F;
+                    livingState.yRot = 0.0F;
                 }
             }
 
