@@ -433,9 +433,9 @@ public final class MenuIntegration {
                 if ("title".equals(screenType) || "pause".equals(screenType)) {
                     // Create animation toggle button (right of rotate button, or above it beside a compact button)
                     int animToggleWidth = 20;
-                    int animToggleX = "pause".equals(screenType)
-                            ? rotateButtonX + rotateButtonSize + spacing
-                            : (compactButton ? rotateButtonX : buttonX + buttonWidth - animToggleWidth);
+                    // Same place on both screens: the right end of the Change Skin button, or above
+                    // the rotate button when that button is compact.
+                    int animToggleX = compactButton ? rotateButtonX : buttonX + buttonWidth - animToggleWidth;
                     int animToggleY = compactButton ? rotateButtonY - rotateButtonSize - spacing : rotateButtonY;
 
                     animationToggleButton = Button.builder(

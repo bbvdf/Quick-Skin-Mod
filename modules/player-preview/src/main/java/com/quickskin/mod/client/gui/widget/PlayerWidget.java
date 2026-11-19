@@ -714,6 +714,12 @@ public class PlayerWidget extends AbstractWidget {
         if (scaleCap != null) {
             scale = Math.min(scale, scaleCap);
         }
+        // The pose-it-yourself path draws a taller figure than the live-player path for the same
+        // scale. The pause preview switched to it for its idle, and at full size it reached over
+        // the buttons, so it is scaled back to the height the live-player path drew.
+        if (previewData.isOwnPose() && context == WidgetContext.PAUSE_MENU) {
+            scale *= 0.88F;
+        }
 
         // Ensure cape animation is registered before rendering
         if (previewData.getCapeId() != null && previewData.getCapeLocation() != null) {
