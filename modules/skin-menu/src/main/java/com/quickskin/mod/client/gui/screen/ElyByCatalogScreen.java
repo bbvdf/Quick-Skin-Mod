@@ -1,5 +1,6 @@
 package com.quickskin.mod.client.gui.screen;
 
+import com.quickskin.mod.client.services.CraftyCatalogService;
 import com.quickskin.mod.client.services.ElyByCatalogService;
 import com.quickskin.mod.client.services.ElyByCatalogService.CatalogItem;
 import com.quickskin.mod.client.services.ElyByCatalogService.CatalogPage;
@@ -100,15 +101,32 @@ public class ElyByCatalogScreen extends Screen {
     private Button previousButton;
     private Button nextButton;
     private Button sortButton;
-    /** False sorts the page by wearers (the catalog's own order), true by newest id. */
-    private boolean newestFirst;
+    private Button sourceButton;
+    /** Which public catalog this screen browses. */
+    private CatalogSource source = CatalogSource.ELY;
+    /** Index into the current source's orders: Ely.by has two, Crafty four. */
+    private int sortIndex;
+
+    /** The public skin catalogs this screen can browse. */
+    private enum CatalogSource {
+        ELY("Ely.by", 2),
+        CRAFTY("Crafty", 4);
+
+        private final String label;
+        private final int orders;
+
+        CatalogSource(String label, int orders) {
+            this.label = label;
+            this.orders = orders;
+        }
+
+        CatalogSource next() {
+            return this == ELY ? CRAFTY : ELY;
+        }
+    }
 
     public ElyByCatalogScreen(Screen parent) {
-//? if <1.21 {
         super(Component.translatable("quickskin.elyby.title"));
-//?} else {
-        super(Component.literal("Ely.by"));
-//?}
         this.parent = parent;
     }
 
@@ -119,34 +137,43 @@ public class ElyByCatalogScreen extends Screen {
                 this.width, this.height, columns, tile, perScreen());
 
         int buttonY = this.height - FOOTER + 14;
-        int buttonWidth = 70;
+        int buttonWidth = 58;
+        int step = buttonWidth + 4;
         int center = this.width / 2;
+        int rowX = center - (buttonWidth * 5 + 4 * 4) / 2;
+
+        sourceButton = Button.builder(Component.literal(source.label),
+                        button -> switchSource())
+                .bounds(rowX, buttonY, buttonWidth, 20)
+                .build();
+        sourceButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.source_tip")));
+        addRenderableWidget(sourceButton);
+
+        sortButton = Button.builder(sortLabel(), button -> {
+                    sortIndex = (sortIndex + 1) % source.orders;
+                    sortButton.setMessage(sortLabel());
+                    loadPage(1, 0);
+                })
+                .bounds(rowX + step, buttonY, buttonWidth, 20)
+                .build();
+        sortButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.sort_tip")));
+        addRenderableWidget(sortButton);
 
         previousButton = Button.builder(Component.translatable("quickskin.elyby.previous"),
                         button -> changeScreen(-1))
-                .bounds(center - buttonWidth - 6, buttonY, buttonWidth, 20)
+                .bounds(rowX + 2 * step, buttonY, buttonWidth, 20)
                 .build();
         addRenderableWidget(previousButton);
 
         nextButton = Button.builder(Component.translatable("quickskin.elyby.next"),
                         button -> changeScreen(1))
-                .bounds(center + 6, buttonY, buttonWidth, 20)
+                .bounds(rowX + 3 * step, buttonY, buttonWidth, 20)
                 .build();
         addRenderableWidget(nextButton);
 
-        sortButton = Button.builder(sortLabel(), button -> {
-                    newestFirst = !newestFirst;
-                    sortButton.setMessage(sortLabel());
-                    loadPage(1, 0);
-                })
-                .bounds(center - 2 * buttonWidth - 18, buttonY, buttonWidth, 20)
-                .build();
-        sortButton.setTooltip(Tooltip.create(Component.translatable("quickskin.elyby.sort_tip")));
-        addRenderableWidget(sortButton);
-
         addRenderableWidget(Button.builder(Component.translatable("quickskin.button.close"),
                         button -> onClose())
-                .bounds(this.width - 86, buttonY, 76, 20)
+                .bounds(rowX + 4 * step, buttonY, buttonWidth, 20)
                 .build());
 
         updatePagingButtons();
@@ -217,7 +244,7 @@ public class ElyByCatalogScreen extends Screen {
         releaseFaces();
         requested.clear();
         updatePagingButtons();
-        ElyByCatalogService.getInstance().fetchPage(page, newestFirst)
+        fetchCatalogPage(page)
                 .thenAccept(loaded -> {
                     if (this.minecraft != null) {
                         this.minecraft.execute(() -> acceptPage(loaded, targetScreen));
@@ -259,7 +286,72 @@ public class ElyByCatalogScreen extends Screen {
     }
 
     private Component sortLabel() {
-        return Component.translatable(newestFirst ? "quickskin.elyby.sort_new" : "quickskin.elyby.sort_hot");
+        if (source == CatalogSource.ELY) {
+            return Component.translatable(sortIndex == 1 ? "quickskin.elyby.sort_new" : "quickskin.elyby.sort_hot");
+        }
+        switch (sortIndex) {
+            case 1:
+                return Component.translatable("quickskin.elyby.sort_new");
+            case 2:
+                return Component.translatable("quickskin.elyby.sort_viewed");
+            case 3:
+                return Component.translatable("quickskin.elyby.sort_trending");
+            default:
+                return Component.translatable("quickskin.elyby.sort_hot");
+        }
+    }
+
+    /** Trade one public catalog for the other, dropping whatever the old one had loaded. */
+    private void switchSource() {
+        source = source.next();
+        sortIndex = 0;
+        sourceButton.setMessage(Component.literal(source.label));
+        sortButton.setMessage(sortLabel());
+        releaseFaces();
+        faces.clear();
+        faceSizes.clear();
+        faceBytes.clear();
+        previews.clear();
+        angles.clear();
+        requested.clear();
+        pageItems = List.of();
+        screenIndex = 0;
+        loadPage(1, 0);
+    }
+
+    /** The texture bytes for an entry, from whichever catalog the entry came from. */
+    private CompletableFuture<byte[]> downloadTexture(CatalogItem item) {
+        return item.skinUrl.startsWith(CraftyCatalogService.REF_PREFIX)
+                ? CraftyCatalogService.getInstance().download(item.skinUrl)
+                : ElyByCatalogService.getInstance().download(item.skinUrl);
+    }
+
+    /** The local asset name prefix for an entry, so an import says where it came from. */
+    private static String importPrefix(CatalogItem item) {
+        return item.skinUrl.startsWith(CraftyCatalogService.REF_PREFIX) ? "crafty-" : "elyby-";
+    }
+
+    /** What one page of the current source's list means. */
+    private CompletableFuture<CatalogPage> fetchCatalogPage(int page) {
+        if (source == CatalogSource.ELY) {
+            return ElyByCatalogService.getInstance().fetchPage(page, sortIndex == 1);
+        }
+        CraftyCatalogService.Sort order;
+        switch (sortIndex) {
+            case 1:
+                order = CraftyCatalogService.Sort.NEWEST;
+                break;
+            case 2:
+                order = CraftyCatalogService.Sort.TOP_VIEWED;
+                break;
+            case 3:
+                order = CraftyCatalogService.Sort.TRENDING;
+                break;
+            default:
+                order = CraftyCatalogService.Sort.MOST_WORN;
+                break;
+        }
+        return CraftyCatalogService.getInstance().fetchPage(page, order);
     }
 
     /** Downloads the textures of the entries on this screen, and nothing else. */
@@ -273,7 +365,7 @@ public class ElyByCatalogScreen extends Screen {
         if (faces.containsKey(item.id) || !requested.add(item.id)) {
             return;
         }
-        ElyByCatalogService.getInstance().download(item.skinUrl)
+        downloadTexture(item)
                 .thenAccept(bytes -> {
                     if (this.minecraft != null) {
                         this.minecraft.execute(() -> registerFace(item.id, bytes));
@@ -341,9 +433,9 @@ public class ElyByCatalogScreen extends Screen {
             //?}
             int mouseX, int mouseY) {
 //? if <26.1 {
-        graphics.drawString(this.font, "Ely.by", 12, 14, TEXT_COLOR, false);
+        graphics.drawString(this.font, source.label, 12, 14, TEXT_COLOR, false);
 //?} else {
-        graphics.text(this.font, "Ely.by", 12, 14, TEXT_COLOR, false);
+        graphics.text(this.font, source.label, 12, 14, TEXT_COLOR, false);
 //?}
         String counter = (screenIndex + 1) + "/" + screenCount()
                 + "  \u00b7  " + catalogPage + "/" + Math.max(1, lastCatalogPage)
@@ -497,13 +589,13 @@ public class ElyByCatalogScreen extends Screen {
         QuickSkinInfo.LOGGER.info("Applying Ely.by catalog skin {}", item.id);
         // The figure is already downloaded for the grid, so a click never waits on the network
         byte[] cached = faceBytes.get(item.id);
-        var source = cached != null
+        var bytesFuture = cached != null
                 ? CompletableFuture.completedFuture(cached)
-                : ElyByCatalogService.getInstance().download(item.skinUrl);
-        source.thenApply(bytes -> {
+                : downloadTexture(item);
+        bytesFuture.thenApply(bytes -> {
                     try {
                         BufferedImage image = SafeImageReader.readSkin(bytes);
-                        return SkinImporter.saveSkinImage(image, "elyby-" + item.id);
+                        return SkinImporter.saveSkinImage(image, importPrefix(item) + item.id);
                     } catch (Exception malformed) {
                         throw new IllegalStateException(malformed);
                     }
