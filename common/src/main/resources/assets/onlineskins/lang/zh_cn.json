@@ -458,7 +458,7 @@
   "onlineskins.elyby.window_two_weeks": "两周",
   "onlineskins.elyby.window_month": "本月",
   "onlineskins.elyby.window_tip": "趋势排序的统计时间窗口",
-  "onlineskins.elyby.source_tip": "在 Crafty、Ely.by 与 MC Skins 皮肤库之间切换",
+  "onlineskins.elyby.source_tip": "选择要浏览的皮肤库",
   "onlineskins.elyby.sort_tip": "循环切换当前皮肤库的排序",
   "onlineskins.button.confirm": "确认",
   "onlineskins.menu.body_width": "手臂宽度: %s",

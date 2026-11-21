@@ -133,7 +133,7 @@ public class ElyByCatalogScreen extends Screen {
     private int sortIndex = 5;
     /** Index into WINDOW_DAYS, for the trending orders only. */
     private int windowIndex = 1;
-    /** Which order menu is open: -1 none, 0 the ordering, 1 the window. */
+    /** Which menu is open: -1 none, 0 the ordering, 1 the window, 2 the catalog. */
     private int openMenu = -1;
     /** Screen rectangles of the open menu's rows, top to bottom, rebuilt every draw. */
     private final java.util.List<int[]> menuRects = new java.util.ArrayList<>();
@@ -150,10 +150,6 @@ public class ElyByCatalogScreen extends Screen {
         CatalogSource(String label, int orders) {
             this.label = label;
             this.orders = orders;
-        }
-
-        CatalogSource next() {
-            return this == CRAFTY ? ELY : this == ELY ? MCSKINS : CRAFTY;
         }
     }
 
@@ -182,7 +178,7 @@ public class ElyByCatalogScreen extends Screen {
         int buttonY = this.height - FOOTER + 14;
 
         sourceButton = Button.builder(Component.literal(source.label),
-                        button -> switchSource())
+                        button -> toggleMenu(2))
                 .bounds(rowX, buttonY, buttonWidth, 20)
                 .build();
         sourceButton.setTooltip(Tooltip.create(Component.translatable("onlineskins.elyby.source_tip")));
@@ -468,6 +464,15 @@ public class ElyByCatalogScreen extends Screen {
                 Component.translatable("onlineskins.elyby.window_month"));
     }
 
+    /** Every public catalog this screen can browse, in the order the source button lists them. */
+    private List<Component> sourceOptions() {
+        List<Component> labels = new java.util.ArrayList<>(CatalogSource.values().length);
+        for (CatalogSource option : CatalogSource.values()) {
+            labels.add(Component.literal(option.label));
+        }
+        return labels;
+    }
+
     /** Draws the open menu over the grid, and records each row for the click test. */
     private void drawMenu(
             //? if <26.1 {
@@ -480,11 +485,11 @@ public class ElyByCatalogScreen extends Screen {
         if (openMenu < 0) {
             return;
         }
-        List<Component> labels = openMenu == 0 ? sortOptions() : windowOptions();
+        List<Component> labels = openMenu == 0 ? sortOptions() : openMenu == 1 ? windowOptions() : sourceOptions();
         int itemHeight = 16;
         int width = 96;
-        int anchorX = openMenu == 0 ? sortButton.getX() : windowButton.getX();
-        int bottom = (openMenu == 0 ? sortButton.getY() : windowButton.getY()) - 2;
+        int anchorX = openMenu == 0 ? sortButton.getX() : openMenu == 1 ? windowButton.getX() : sourceButton.getX();
+        int bottom = (openMenu == 0 ? sortButton.getY() : openMenu == 1 ? windowButton.getY() : sourceButton.getY()) - 2;
         int totalHeight = labels.size() * itemHeight + 4;
         int x = Math.max(2, Math.min(anchorX, this.width - width - 2));
         int y = bottom - totalHeight;
@@ -495,7 +500,7 @@ public class ElyByCatalogScreen extends Screen {
         graphics.fill(x, y, x + 1, y + totalHeight, 0xFF808080);
         graphics.fill(x + width - 1, y, x + width, y + totalHeight, 0xFF808080);
 
-        int current = openMenu == 0 ? sortIndex : windowIndex;
+        int current = openMenu == 0 ? sortIndex : openMenu == 1 ? windowIndex : source.ordinal();
         for (int index = 0; index < labels.size(); index++) {
             int rowY = y + 2 + index * itemHeight;
             int rowX = x + 2;
@@ -525,9 +530,12 @@ public class ElyByCatalogScreen extends Screen {
                 if (openMenu == 0) {
                     sortIndex = index;
                     sortButton.setMessage(sortLabel());
-                } else {
+                } else if (openMenu == 1) {
                     windowIndex = index;
                     windowButton.setMessage(windowLabel());
+                } else {
+                    CatalogSource[] sources = CatalogSource.values();
+                    applySource(sources[Math.max(0, Math.min(index, sources.length - 1))]);
                 }
                 openMenu = -1;
                 updatePagingButtons();
@@ -539,9 +547,12 @@ public class ElyByCatalogScreen extends Screen {
         return true;
     }
 
-    /** Trade one public catalog for the other, dropping whatever the old one had loaded. */
-    private void switchSource() {
-        source = source.next();
+    /** Trade one public catalog for another, dropping whatever the old one had loaded. */
+    private void applySource(CatalogSource chosen) {
+        if (chosen == source) {
+            return;
+        }
+        source = chosen;
         sortIndex = 0;
         openMenu = -1;
         sourceButton.setMessage(Component.literal(source.label));
@@ -555,7 +566,6 @@ public class ElyByCatalogScreen extends Screen {
         requested.clear();
         pageItems = List.of();
         screenIndex = 0;
-        loadPage(1, 0);
     }
 
     /** The texture bytes for an entry, from whichever catalog the entry came from. */
