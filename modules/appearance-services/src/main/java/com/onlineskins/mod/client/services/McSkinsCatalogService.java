@@ -123,8 +123,7 @@ public final class McSkinsCatalogService {
 
     /** Reads one listing page's slugs; a page that fails mid-listing only ends the listing. */
     private static CompletableFuture<List<String>> readSlugs(String url, boolean required) {
-        CompletableFuture<List<String>> future = ClientIoExecutor.supplyAsync(
-                () -> slugsOf(read(url, MAX_PAGE_BYTES)));
+        CompletableFuture<List<String>> future = ClientIoExecutor.supplyAsync(() -> slugsOf(url));
         return required ? future : future.exceptionally(throwable -> List.of());
     }
 
