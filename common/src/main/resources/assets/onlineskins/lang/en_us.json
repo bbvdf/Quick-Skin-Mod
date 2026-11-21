@@ -459,11 +459,14 @@
   "onlineskins.elyby.sort_gainers": "Gainers",
   "onlineskins.elyby.sort_growing": "Growing",
   "onlineskins.elyby.sort_hot_now": "Hot now",
+  "onlineskins.elyby.sort_month": "This month",
+  "onlineskins.elyby.sort_week": "This week",
+  "onlineskins.elyby.sort_all": "All",
   "onlineskins.elyby.window_today": "Today",
   "onlineskins.elyby.window_week": "Week",
   "onlineskins.elyby.window_two_weeks": "2 weeks",
   "onlineskins.elyby.window_month": "Month",
   "onlineskins.elyby.window_tip": "Time window for the trending orders",
-  "onlineskins.elyby.source_tip": "Switch between the Ely.by and Crafty catalogs",
+  "onlineskins.elyby.source_tip": "Switch between the Crafty, Ely.by and MC Skins catalogs",
   "onlineskins.elyby.sort_tip": "Cycle this catalog's orders"
 }

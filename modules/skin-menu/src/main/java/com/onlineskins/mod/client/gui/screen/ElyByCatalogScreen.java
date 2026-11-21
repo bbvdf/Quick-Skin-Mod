@@ -5,6 +5,7 @@ import com.onlineskins.mod.client.services.ElyByCatalogService;
 import com.onlineskins.mod.client.services.ElyByCatalogService.CatalogItem;
 import com.onlineskins.mod.client.services.ElyByCatalogService.CatalogPage;
 import com.onlineskins.mod.client.services.LocalAssetManager;
+import com.onlineskins.mod.client.services.McSkinsCatalogService;
 import com.onlineskins.mod.client.services.PlayerAppearanceService;
 import com.onlineskins.mod.client.gui.GuiCompat;
 import com.onlineskins.mod.client.gui.util.SkinImporter;
@@ -14,6 +15,7 @@ import com.onlineskins.mod.common.data.AssetMetadata;
 import com.onlineskins.mod.common.util.HashUtil;
 import com.onlineskins.mod.common.util.HDTextureProcessor;
 import com.onlineskins.mod.common.util.SafeImageReader;
+import com.onlineskins.mod.common.util.SkinModelDetector;
 import com.onlineskins.mod.platform.MinecraftTextureUploads;
 import com.onlineskins.mod.platform.QuickSkinInfo;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -109,6 +111,16 @@ public class ElyByCatalogScreen extends Screen {
     private final Map<Long, PreviewPlayerData> previews = new HashMap<>();
     /** Each tile's current {yaw, pitch}, eased toward the pointer every frame. */
     private final Map<Long, float[]> angles = new HashMap<>();
+    /**
+     * The arm width each entry's own sheet shows, for catalogs that publish no model. Decided when
+     * the texture arrives, before the tile draws its figure.
+     */
+    private final Map<Long, Boolean> slimOverrides = new HashMap<>();
+    /** The page fetched ahead of the reader, and the catalog state it was fetched for. */
+    private CatalogPage prefetchedPage;
+    private String prefetchedKey;
+    /** The page a prefetch is in flight for, so one page is never fetched twice. */
+    private String prefetchingKey;
 
     private Button previousButton;
     private Button nextButton;
@@ -129,7 +141,8 @@ public class ElyByCatalogScreen extends Screen {
     /** The public skin catalogs this screen can browse, Crafty first. */
     private enum CatalogSource {
         CRAFTY("Crafty", 6),
-        ELY("Ely.by", 2);
+        ELY("Ely.by", 2),
+        MCSKINS("MC Skins", 3);
 
         private final String label;
         private final int orders;
@@ -140,7 +153,7 @@ public class ElyByCatalogScreen extends Screen {
         }
 
         CatalogSource next() {
-            return this == ELY ? CRAFTY : ELY;
+            return this == CRAFTY ? ELY : this == ELY ? MCSKINS : CRAFTY;
         }
     }
 
@@ -256,11 +269,72 @@ public class ElyByCatalogScreen extends Screen {
             return;
         }
         if (target >= screenCount() && catalogPage < lastCatalogPage) {
-            loadPage(catalogPage + 1, 0);
+            showPage(catalogPage + 1, 0);
         } else if (target < 0 && catalogPage > 1) {
             // -1 asks for the last screen of the page that loads
             loadPage(catalogPage - 1, -1);
         }
+    }
+
+    /** Shows a page, using the one read ahead of the reader when it is the same page. */
+    private void showPage(int page, int targetScreen) {
+        if (prefetchedPage != null && catalogKey(page).equals(prefetchedKey)) {
+            CatalogPage ready = prefetchedPage;
+            prefetchedPage = null;
+            prefetchedKey = null;
+            releaseFaces();
+            requested.clear();
+            acceptPage(ready, targetScreen);
+            return;
+        }
+        loadPage(page, targetScreen);
+    }
+
+    /** Identifies a page within the current catalog and order, so a stale prefetch is never used. */
+    private String catalogKey(int page) {
+        return source.name() + ":" + sortIndex + ":" + windowIndex + ":" + page;
+    }
+
+    /**
+     * Reads the page after this one while the reader is still on this one, so turning past the last
+     * screen of a page costs no network wait. Only the listing is read; textures still arrive per
+     * tile once the page is shown.
+     */
+    private void prefetchNextPage() {
+        int next = catalogPage + 1;
+        if (next > lastCatalogPage) {
+            return;
+        }
+        String key = catalogKey(next);
+        if (key.equals(prefetchedKey) || key.equals(prefetchingKey)) {
+            return;
+        }
+        prefetchingKey = key;
+        fetchCatalogPage(next)
+                .thenAccept(page -> {
+                    if (this.minecraft != null) {
+                        this.minecraft.execute(() -> {
+                            if (key.equals(prefetchingKey)) {
+                                prefetchingKey = null;
+                            }
+                            // Keep it only while it is still the page we would show next.
+                            if (key.equals(catalogKey(catalogPage + 1))) {
+                                prefetchedPage = page;
+                                prefetchedKey = key;
+                            }
+                        });
+                    }
+                })
+                .exceptionally(throwable -> {
+                    if (this.minecraft != null) {
+                        this.minecraft.execute(() -> {
+                            if (key.equals(prefetchingKey)) {
+                                prefetchingKey = null;
+                            }
+                        });
+                    }
+                    return null;
+                });
     }
 
     private void loadPage(int page, int targetScreen) {
@@ -269,6 +343,9 @@ public class ElyByCatalogScreen extends Screen {
         openMenu = -1;
         catalogPage = page;
         pageItems = List.of();
+        // A page read ahead belongs to whichever page was next when it was fetched, not to this one.
+        prefetchedPage = null;
+        prefetchedKey = null;
         screenIndex = 0;
         releaseFaces();
         requested.clear();
@@ -303,6 +380,7 @@ public class ElyByCatalogScreen extends Screen {
                 : Math.max(0, Math.min(targetScreen, screenCount() - 1));
         updatePagingButtons();
         requestVisibleFaces();
+        prefetchNextPage();
     }
 
     private void updatePagingButtons() {
@@ -320,6 +398,10 @@ public class ElyByCatalogScreen extends Screen {
     private Component sortLabel() {
         if (source == CatalogSource.ELY) {
             return Component.translatable(sortIndex == 1 ? "onlineskins.elyby.sort_new" : "onlineskins.elyby.sort_hot");
+        }
+        if (source == CatalogSource.MCSKINS) {
+            return Component.translatable(sortIndex == 2 ? "onlineskins.elyby.sort_all"
+                    : sortIndex == 1 ? "onlineskins.elyby.sort_week" : "onlineskins.elyby.sort_month");
         }
         switch (sortIndex) {
             case 1:
@@ -365,6 +447,11 @@ public class ElyByCatalogScreen extends Screen {
         if (source == CatalogSource.ELY) {
             return List.of(Component.translatable("onlineskins.elyby.sort_hot"),
                     Component.translatable("onlineskins.elyby.sort_new"));
+        }
+        if (source == CatalogSource.MCSKINS) {
+            return List.of(Component.translatable("onlineskins.elyby.sort_month"),
+                    Component.translatable("onlineskins.elyby.sort_week"),
+                    Component.translatable("onlineskins.elyby.sort_all"));
         }
         return List.of(Component.translatable("onlineskins.elyby.sort_hot"),
                 Component.translatable("onlineskins.elyby.sort_new"),
@@ -473,6 +560,9 @@ public class ElyByCatalogScreen extends Screen {
 
     /** The texture bytes for an entry, from whichever catalog the entry came from. */
     private CompletableFuture<byte[]> downloadTexture(CatalogItem item) {
+        if (item.skinUrl.startsWith(McSkinsCatalogService.REF_PREFIX)) {
+            return McSkinsCatalogService.getInstance().download(item.skinUrl);
+        }
         return item.skinUrl.startsWith(CraftyCatalogService.REF_PREFIX)
                 ? CraftyCatalogService.getInstance().download(item.skinUrl)
                 : ElyByCatalogService.getInstance().download(item.skinUrl);
@@ -480,6 +570,7 @@ public class ElyByCatalogScreen extends Screen {
 
     /** The local asset name prefix for an entry, so an import says where it came from. */
     private static String importPrefix(CatalogItem item) {
+        if (item.skinUrl.startsWith(McSkinsCatalogService.REF_PREFIX)) return "mcskins-";
         return item.skinUrl.startsWith(CraftyCatalogService.REF_PREFIX) ? "crafty-" : "elyby-";
     }
 
@@ -487,6 +578,11 @@ public class ElyByCatalogScreen extends Screen {
     private CompletableFuture<CatalogPage> fetchCatalogPage(int page) {
         if (source == CatalogSource.ELY) {
             return ElyByCatalogService.getInstance().fetchPage(page, sortIndex == 1);
+        }
+        if (source == CatalogSource.MCSKINS) {
+            McSkinsCatalogService.Window[] windows = McSkinsCatalogService.Window.values();
+            int index = Math.max(0, Math.min(sortIndex, windows.length - 1));
+            return McSkinsCatalogService.getInstance().fetchPage(page, windows[index]);
         }
         int index = Math.max(0, Math.min(sortIndex, CRAFTY_ORDERS.length - 1));
         return CraftyCatalogService.getInstance()
@@ -507,7 +603,7 @@ public class ElyByCatalogScreen extends Screen {
         downloadTexture(item)
                 .thenAccept(bytes -> {
                     if (this.minecraft != null) {
-                        this.minecraft.execute(() -> registerFace(item.id, bytes));
+                        this.minecraft.execute(() -> registerFace(item, bytes));
                     }
                 })
                 .exceptionally(throwable -> {
@@ -517,7 +613,8 @@ public class ElyByCatalogScreen extends Screen {
                 });
     }
 
-    private void registerFace(long id, byte[] bytes) {
+    private void registerFace(CatalogItem item, byte[] bytes) {
+        long id = item.id;
         if (faces.containsKey(id)) {
             return;
         }
@@ -535,9 +632,23 @@ public class ElyByCatalogScreen extends Screen {
             faces.put(id, location);
             faceSizes.put(id, new int[]{image.getWidth(), image.getHeight()});
             faceBytes.put(id, bytes);
+            // mcskins.top cards say nothing about arm width, so the sheet itself decides it.
+            if (item.skinUrl.startsWith(McSkinsCatalogService.REF_PREFIX)) {
+                try {
+                    slimOverrides.put(id,
+                            "slim".equals(SkinModelDetector.detectSkinModel(SafeImageReader.readSkin(bytes))));
+                } catch (Exception undetectable) {
+                    // The entry keeps the classic arms it started with.
+                }
+            }
         } catch (Exception malformed) {
             QuickSkinInfo.LOGGER.warn("Unable to register Ely.by catalog skin {}", id, malformed);
         }
+    }
+
+    /** The arm width of an entry: the catalog's own when it publishes one, else what its sheet shows. */
+    private boolean isSlim(CatalogItem item) {
+        return slimOverrides.getOrDefault(item.id, item.slim);
     }
 
     private void releaseFaces() {
@@ -554,6 +665,7 @@ public class ElyByCatalogScreen extends Screen {
         faceBytes.clear();
         previews.clear();
         angles.clear();
+        slimOverrides.clear();
     }
 
     //? if <26.1 {
@@ -648,7 +760,7 @@ public class ElyByCatalogScreen extends Screen {
         }
         PreviewPlayerData data = previews.computeIfAbsent(item.id, key -> new PreviewPlayerData());
         data.setSkinLocation(texture);
-        data.setModelType(item.slim ? "slim" : "classic");
+        data.setModelType(isSlim(item) ? "slim" : "classic");
 
         // The renderer scales a 32-unit model by scale/16, so the drawn height is 2*scale pixels
         float figureScale = Math.max(4.0F, (tile - 6.0F) / 2.0F);
@@ -783,7 +895,7 @@ public class ElyByCatalogScreen extends Screen {
         if (this.minecraft != null && this.minecraft.player != null) {
             // "classic" and "slim" are the local preference values; "default" is Mojang's spelling
             PlayerAppearanceService.getInstance().applySkin(this.minecraft.player.getUUID(),
-                    "local_skin:" + metadata.hash(), item.slim ? "slim" : "classic");
+                    "local_skin:" + metadata.hash(), isSlim(item) ? "slim" : "classic");
         }
         QuickSkinInfo.LOGGER.info("Ely.by skin {} imported as {}", item.id, metadata.hash());
         onClose();
