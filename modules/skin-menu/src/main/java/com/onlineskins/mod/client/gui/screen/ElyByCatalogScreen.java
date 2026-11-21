@@ -125,6 +125,8 @@ public class ElyByCatalogScreen extends Screen {
     private final Map<Long, byte[]> prefetchedFaces = new HashMap<>();
     /** Entries whose texture a prefetch already asked for, so one tile is never fetched twice. */
     private final Set<Long> prefetching = new HashSet<>();
+    /** Screens read ahead: two, so a fast reader still turns into ready skins. */
+    private static final int PREFETCH_SCREENS = 2;
 
     private Button previousButton;
     private Button nextButton;
@@ -329,7 +331,7 @@ public class ElyByCatalogScreen extends Screen {
                                 prefetchedPage = page;
                                 prefetchedKey = key;
                                 prefetchFaces(page.items, 0,
-                                        Math.min(perScreen(), page.items.size()), key);
+                                        Math.min(PREFETCH_SCREENS * perScreen(), page.items.size()), key);
                             }
                         });
                     }
@@ -347,14 +349,15 @@ public class ElyByCatalogScreen extends Screen {
     }
 
     /**
-     * Reads the screen after this one while the reader is still on this one: its ten skins, or the
-     * next page when this page has no screen left. Called after every screen and every page, so
-     * turning never lands on a screen of empty tiles.
+     * Reads the screens after this one while the reader is still on this one: ten skins each, or
+     * the next page when this page has no screen left. Called after every screen and every page,
+     * so turning never lands on a screen of empty tiles.
      */
     private void prefetchAhead() {
         int from = (screenIndex + 1) * perScreen();
         if (from < pageItems.size()) {
-            prefetchFaces(pageItems, from, Math.min(from + perScreen(), pageItems.size()), null);
+            prefetchFaces(pageItems, from,
+                    Math.min(from + PREFETCH_SCREENS * perScreen(), pageItems.size()), null);
             return;
         }
         prefetchNextPage();
