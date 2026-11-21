@@ -1,0 +1,121 @@
+package com.onlineskins.mod.client.services;
+
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+
+import java.util.UUID;
+
+/** Applies the saved local appearance after the composition root admits a joined session. */
+@Environment(EnvType.CLIENT)
+public final class SavedAppearanceRestorer {
+    private SavedAppearanceRestorer() {
+    }
+
+    public static void restore(UUID targetPlayerId) {
+        // A session that shows the look the server saved for this player keeps it on respawn.
+        // When a CPM model was the look meanwhile, the skin was withdrawn and only the skin comes
+        // back: activeSkinHash names the skin now worn (the server's, or one chosen since).
+        if (com.onlineskins.mod.config.AccountSkinSession.getInstance().adopted(targetPlayerId,
+                net.minecraft.client.Minecraft.getInstance().getConnection())) {
+            PlayerAppearanceService appearances = PlayerAppearanceService.getInstance();
+            String wornSkinHash = com.onlineskins.mod.config.ClientConfig.getInstance().activeSkinHash;
+            if (!appearances.hasOwnActiveSkin(targetPlayerId) && !wornSkinHash.isEmpty()) {
+                appearances.applySkin(targetPlayerId, "local_skin:" + wornSkinHash,
+                        LocalAssetManager.getInstance().getSkinModelPreference(wornSkinHash));
+            }
+            return;
+        }
+        com.onlineskins.mod.config.ClientConfig config = com.onlineskins.mod.config.ClientConfig.getInstance();
+        com.onlineskins.mod.client.services.LocalAssetManager assetManager =
+                com.onlineskins.mod.client.services.LocalAssetManager.getInstance();
+        //? if >=1.21 {
+
+        String skinId = null;
+        String modelType = null;
+        String capeId = null;
+        //?}
+
+        // Check if there's a saved skin
+        if (!config.activeSkinHash.isEmpty()) {
+            com.onlineskins.mod.common.data.AssetMetadata metadata = assetManager.getMetadata(config.activeSkinHash);
+
+            if (metadata != null) {
+                //? if <1.21 {
+                String skinId = "local_skin:" + metadata.hash();
+                String modelType = assetManager.getSkinModelPreference(config.activeSkinHash);
+                com.onlineskins.mod.client.services.PlayerAppearanceService.getInstance()
+                        .applySkin(targetPlayerId, skinId, modelType);
+                //?} else {
+                // Prepare the saved skin with the saved model type preference for this skin
+                skinId = "local_skin:" + metadata.hash();
+                modelType = assetManager.getSkinModelPreference(config.activeSkinHash);
+                //?}
+            }
+        } else if (!config.playerOwnSkinHash.isEmpty() && config.activeCpmModelHash.isEmpty()) {
+            // No skin selected, but player's own skin exists - auto-select it
+            com.onlineskins.mod.common.data.AssetMetadata metadata = assetManager.getMetadata(config.playerOwnSkinHash);
+
+            if (metadata != null) {
+                // Auto-select and apply the player's own skin
+                config.activeSkinHash = config.playerOwnSkinHash;
+                config.save();
+
+                //? if <1.21 {
+                String skinId = "local_skin:" + metadata.hash();
+                String modelType = assetManager.getSkinModelPreference(config.playerOwnSkinHash);
+                //?} else {
+                skinId = "local_skin:" + metadata.hash();
+                modelType = assetManager.getSkinModelPreference(config.playerOwnSkinHash);
+                //?}
+
+                // If auto mode, use the detected model from the skin
+                if ("auto".equals(modelType)) {
+                    modelType = metadata.skinModel();
+                }
+                //? if <1.21 {
+                com.onlineskins.mod.client.services.PlayerAppearanceService.getInstance()
+                        .applySkin(targetPlayerId, skinId, modelType);
+                //?}
+            }
+        }
+
+        // Check if there's a saved cape
+        if (!config.activeCapeHash.isEmpty()) {
+            //? if <1.21 {
+            String capeId = config.activeCapeHash;
+            //?} else {
+            capeId = config.activeCapeHash;
+        }
+            //?}
+
+        //? if >=1.21 {
+        // Apply both skin and cape together in a single call to avoid multiple syncs
+        if (skinId != null || capeId != null) {
+        //?}
+            com.onlineskins.mod.client.services.PlayerAppearanceService.getInstance()
+                    //? if <1.21 {
+                    .applyCape(targetPlayerId, capeId);
+                    //?} else {
+                    .applyLook(targetPlayerId, skinId, capeId, modelType);
+                    //?}
+        }
+
+        // A CPM model that is the latest look choice replaces the Quick Skin skin. When nothing
+        // above was applied, create the empty appearance the connection bootstrap sends, so the
+        // server stops relaying a skin it saved in an earlier session.
+        if ((com.onlineskins.mod.client.compat.CpmLook.owner().withholdsQuickSkinSkin()
+                || (config.activeSkinHash.isEmpty() && !config.activeCpmModelHash.isEmpty()))
+                && com.onlineskins.mod.client.services.PlayerAppearanceService.getInstance()
+                        .getAppearance(targetPlayerId) == null) {
+            com.onlineskins.mod.client.services.PlayerAppearanceService.getInstance()
+                    .applyLook(targetPlayerId, null, null, null);
+        }
+
+        // The elytra's own cape, when the player chose one; it syncs with the look applied above
+        if (!config.activeElytraId.isEmpty()) {
+            com.onlineskins.mod.client.services.PlayerAppearanceService.getInstance()
+                    .applyElytra(targetPlayerId, config.activeElytraId);
+        }
+    }
+
+}

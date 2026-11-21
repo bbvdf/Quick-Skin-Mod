@@ -35,9 +35,6 @@ repositories.withType<MavenArtifactRepository>().configureEach {
             includeGroupByRegex("cpw\\.mods(\\..*)?")
             excludeGroupByRegex("net\\.neoforged\\.fancymodloader\\.[0-9a-f]{64}")
         }
-        // The Plum Team's mirror, added first by gradle/maven-mirror.gradle.kts, which keeps it away
-        // from what it never holds: Mojang's and Minecraft's files and the namespaces Loom generates.
-        repositoryHost == "maven.quickskin.net" && url.path == "/" -> Unit
         // Google's mirror of Maven Central, declared right after every mavenCentral(), takes
         // Central's filter.
         repositoryHost == "repo.maven.apache.org" ||
@@ -87,7 +84,6 @@ configurations.matching { it.name == "architecturyTransformerClasspath" }.config
     }
 }
 
-apply(from = rootProject.file("gradle/maven-mirror.gradle.kts"))
 
 // Loom takes LWJGL from Maven Central alone: it declares a repository named MavenCentralLWJGL there
 // and makes it the only one that may serve org.lwjgl, which shuts the mirror out

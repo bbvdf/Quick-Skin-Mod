@@ -5,7 +5,7 @@ license = "All Rights Reserved"
 issueTrackerURL = "https://github.com/The-Plum-Team/Quick-Skin-Mod/issues"
 
 [[mods]]
-modId = "quickskin"
+modId = "onlineskins"
 version = "${version}"
 displayName = "Quick Skin"
 displayTest = "IGNORE_ALL_VERSION"
@@ -16,21 +16,21 @@ Change, preview, and synchronize local skins, capes, and CPM models in-game acro
 displayURL = "https://modrinth.com/mod/quick-skin"
 logoFile = "icon.png"
 
-[[dependencies.quickskin]]
+[[dependencies.onlineskins]]
 modId = "forge"
 mandatory = true
 versionRange = "[47,)"
 ordering = "NONE"
 side = "BOTH"
 
-[[dependencies.quickskin]]
+[[dependencies.onlineskins]]
 modId = "minecraft"
 mandatory = true
 versionRange = "[1.20.1,1.20.2)"
 ordering = "NONE"
 side = "BOTH"
 
-[[dependencies.quickskin]]
+[[dependencies.onlineskins]]
 modId = "architectury"
 mandatory = true
 versionRange = "[9.2.14,)"

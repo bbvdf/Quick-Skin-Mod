@@ -14,7 +14,7 @@ description = "Dev-only end-to-end test harness for Quick Skin."
 displayTest = "IGNORE_ALL_VERSION"
 
 [[dependencies.quick_skin_e2e]]
-modId = "quickskin"
+modId = "onlineskins"
 type = "required"
 ordering = "AFTER"
 side = "BOTH"

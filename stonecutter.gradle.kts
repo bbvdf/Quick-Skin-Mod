@@ -27,7 +27,7 @@ val releaseMatrix = matrixState["quickSkinReleaseMatrix"] as Map<*, *>
 val releaseArtifacts = matrixState["quickSkinReleaseArtifacts"] as List<Map<*, *>>
 @Suppress("UNCHECKED_CAST")
 val buildArtifacts = matrixState["quickSkinBuildArtifacts"] as List<Map<*, *>>
-val buildTarget = providers.gradleProperty("quickskinTarget").orNull
+val buildTarget = providers.gradleProperty("onlineskinsTarget").orNull
 val singleVersionInventory = releaseArtifacts.map { it["artifact_version"] }.distinct().size == 1
 val releaseLaneCount = (releaseMatrix["lane_count"] as? Number)?.toInt()
     ?: error("Missing lane_count in $releaseMatrixFile")
@@ -96,7 +96,7 @@ val validateReleaseLaneInventory = tasks.register("validateReleaseLaneInventory"
     description = "Checks that every central release-matrix lane resolves to real Gradle tasks."
     inputs.file(releaseMatrixFile)
     doLast {
-        check(buildTarget == null) { "Full inventory validation requires omitting -PquickskinTarget" }
+        check(buildTarget == null) { "Full inventory validation requires omitting -PonlineskinsTarget" }
         (releaseArtifactTasks + releaseHarnessTasks).forEach { taskPath ->
             tasks.getByPath(taskPath)
         }
@@ -155,10 +155,10 @@ tasks.register("buildAllE2EHarnesses") {
 
 val validateTargetLaneInventory = tasks.register("validateTargetLaneInventory") {
     group = "verification"
-    description = "Checks the Gradle tasks selected by -PquickskinTarget against the complete matrix."
+    description = "Checks the Gradle tasks selected by -PonlineskinsTarget against the complete matrix."
     inputs.file(releaseMatrixFile)
     doLast {
-        check(buildTarget != null) { "Target tasks require -PquickskinTarget=<minecraft>" }
+        check(buildTarget != null) { "Target tasks require -PonlineskinsTarget=<minecraft>" }
         buildArtifacts.forEach { artifact ->
             tasks.getByPath(artifact["gradle_task"].toString())
             tasks.getByPath(artifact["harness_task"].toString())
@@ -168,21 +168,21 @@ val validateTargetLaneInventory = tasks.register("validateTargetLaneInventory") 
 
 val testTargetLane = tasks.register("testTargetLane") {
     group = "verification"
-    description = "Runs module policy and unit tests against -PquickskinTarget."
+    description = "Runs module policy and unit tests against -PonlineskinsTarget."
     dependsOn(validateTargetLaneInventory)
     if (buildTarget != null) dependsOn(testModuleGraph, ":common:$buildTarget:test")
 }
 
 tasks.register("buildTargetLanes") {
     group = "build"
-    description = "Builds every loader artifact for -PquickskinTarget without configuring other versions."
+    description = "Builds every loader artifact for -PonlineskinsTarget without configuring other versions."
     dependsOn(testTargetLane)
     if (buildTarget != null) dependsOn(buildArtifacts.map { it["gradle_task"].toString() })
 }
 
 tasks.register("buildTargetE2EHarnesses") {
     group = "verification"
-    description = "Builds every packaged E2E harness for -PquickskinTarget."
+    description = "Builds every packaged E2E harness for -PonlineskinsTarget."
     dependsOn(validateTargetLaneInventory)
     if (buildTarget != null) dependsOn(buildArtifacts.map { it["harness_task"].toString() })
 }

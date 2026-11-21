@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "quickskin",
+  "id": "onlineskins",
   "version": "${version}",
   "name": "OnlineSkins",
   "description": "Change, preview, and synchronize local skins, capes, and CPM models in-game across Fabric and Forge.",
@@ -18,15 +18,15 @@
   "environment": "*",
   "entrypoints": {
     "main": [
-      "com.quickskin.mod.fabric.QuickSkinFabric"
+      "com.onlineskins.mod.fabric.QuickSkinFabric"
     ],
     "client": [
-      "com.quickskin.mod.fabric.QuickSkinFabricClient"
+      "com.onlineskins.mod.fabric.QuickSkinFabricClient"
     ]
   },
   "mixins": [
-    "quickskin.mixins.json",
-    "quickskin-ears.mixins.json"
+    "onlineskins.mixins.json",
+    "onlineskins-ears.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=0.17.0",

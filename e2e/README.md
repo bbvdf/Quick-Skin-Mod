@@ -82,7 +82,7 @@ against staged production and harness JARs:
 
 ```bash
 python e2e/selection.py \
-  --changed-path modules/cape-editor/src/main/java/com/quickskin/mod/client/gui/screen/CapeAdjustScreen.java \
+  --changed-path modules/cape-editor/src/main/java/com/onlineskins/mod/client/gui/screen/CapeAdjustScreen.java \
   --output build/e2e-selection.json
 python e2e/orchestrator.py --packaged \
   --artifacts-manifest build/release/artifacts.json \
@@ -378,7 +378,7 @@ Built-in Capes. Settings checkpoints capture every tab, the keybind capture stat
 server notice, and the skin menu's own buttons over the vanilla in-world background.
 
 Two single-client scenarios complement it. `server-policy` is the only lane whose dedicated server
-starts with a non-default `quickskin-server.json`; the seed is declared in the contract's
+starts with a non-default `onlineskins-server.json`; the seed is declared in the contract's
 `orchestration.server_config` and written verbatim by the orchestrator. It proves the server
 override reaches the client, that the server transparency policy wins over the client setting,
 that a second skin change stays on the real cooldown button and unacknowledged, and that a cape
@@ -655,7 +655,7 @@ workflow for each locked mod:
 - FancyMenu runs every scenario with only its options file (no welcome screen, no editor overlays)
   and no customized screen, so the ordinary suite proves that installing it changes nothing. For
   the `mod-compatibility` scenario alone the runtime also seeds two layouts for Quick Skin's
-  `quickskin_player_preview` identifier: the title layout hides the preview, and the control
+  `onlineskins_player_preview` identifier: the title layout hides the preview, and the control
   capture requires the rotate button and animation toggle to be hidden and inactive with it while
   Change Skin stays; the pause layout moves and enlarges the preview, and the applied capture
   requires the preview's exact layout box, the applied skin, and the rotate button back.

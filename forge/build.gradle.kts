@@ -53,8 +53,8 @@ sourceSets {
 
 extensions.configure<LoomGradleExtensionAPI>("loom") {
     forge {
-        mixinConfig("quickskin.mixins.json")
-        mixinConfig("quickskin-ears.mixins.json")
+        mixinConfig("onlineskins.mixins.json")
+        mixinConfig("onlineskins-ears.mixins.json")
     }
 }
 

@@ -83,7 +83,7 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
   pacing, and caches continue to enforce the local bounds even after negotiation.
 - A legacy v1 (Quick Skin 2.x) server persists each uploaded texture and relays it, at the upload
   and again whenever a player joins or changes dimension, to the other Quick Skin players as one
-  unchunked `quickskin:send_texture` payload. A client in `LEGACY_V1` mode therefore uploads at
+  unchunked `onlineskins:send_texture` payload. A client in `LEGACY_V1` mode therefore uploads at
   most `TextureTransferLimits.MAX_LEGACY_UPLOAD_BYTES` (`ProtocolProfile.maximumUploadBytes()`)
   and sends the appearance with a larger texture's id empty, so that server replaces the copy it
   stored instead of relaying it again. The bound never applies to the same profile on a 3.x
@@ -170,7 +170,7 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
   copy of the equipment packet, alone or in a bundle, for every client, Quick Skin or not. The item
   stays worn; nothing is written to the player. `allowHiddenArmor` (default on) turns it off. The
   player's own client hides the pieces only where the server does. On NeoForge these mixins load
-  from `quickskin-armor.mixins.json`. A Cosmetic Armor Reworked piece over an armour piece is a
+  from `onlineskins-armor.mixins.json`. A Cosmetic Armor Reworked piece over an armour piece is a
   piece of its own, four bits up in the same mask, sent only on a session that also negotiated
   `hidden-cosmetic-armor` (an older server refuses the whole update otherwise) and kept per account
   in a map apart, so an older client reading the configuration keeps the armour pieces. The server
@@ -213,19 +213,19 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
   session (`PlayerNicknameRepository`) and show them on name tags; the server's sends check the
   recipient's exact profile for v2 and `nicknames`, never a channel probe, so v1 peers get none.
   The nickname mixins are degradable and NeoForge loads them from
-  `quickskin-nicknames.mixins.json`, because it never reads `quickskin.mixins.json`.
-- `/quickskin` (`QuickSkinCommands`, networking) is Quick Skin's only command root, registered
+  `onlineskins-nicknames.mixins.json`, because it never reads `onlineskins.mixins.json`.
+- `/onlineskins` (`QuickSkinCommands`, networking) is Quick Skin's only command root, registered
   through Architectury's `CommandRegistrationEvent` and offered only to permission level 2. An
   admin's nickname is a separate layer of the player's store entry (`assigned`): it shows
   instead of the player's own, which is kept, follows the same rules without the cooldown,
   blocks no one's choice but the player's, and is told only to that player and through vanilla's
   operator feedback, never announced, so a game can hand out names without saying who is who.
   `allowNicknames` gates only the names players choose. `random` reads
-  `config/quickskin-nicknames.txt` (`NicknamePool`, bounded, written with defaults when missing)
+  `config/onlineskins-nicknames.txt` (`NicknamePool`, bounded, written with defaults when missing)
   on each run and gives each player a different free name, after taking back their earlier
   admin names; players it cannot name are reported, never given a repeat. An absent player's
   admin name stays theirs, and blocks it, until a `reset` without players takes back everyone's.
-  `/quickskin silent nickname|skin ...` runs the same commands (the pool's excepted) through
+  `/onlineskins silent nickname|skin ...` runs the same commands (the pool's excepted) through
   `withSuppressedOutput`, so no feedback reaches whoever runs them, a command block included, or
   other operators, while the result count still does; the nicknames it gives are `secret` in the
   store, so neither join and leave messages nor the operators' tab list show the account name
@@ -284,7 +284,7 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
   from vanilla `█` characters, one chat line per row, and breaks the title, text and link beside
   it by the vanilla default font's widths for the default chat width. From 1.21.4 each pixel's
   shadow takes its own colour so the pixels join; before, the dark shadow shows as a grid.
-  The record of who was told is one empty file per UUID in `<world>/quickskin/missing_mod_notices`
+  The record of who was told is one empty file per UUID in `<world>/onlineskins/missing_mod_notices`
   (`MissingModNoticeLedger`), written on the cache-I/O worker; an unusable folder tells nobody.
   These settings never travel in the synchronized server configuration.
 
@@ -346,7 +346,7 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
   most one queued save per player holding its latest change, and write under the storage lock so a
   later synchronous disconnect/shutdown save is never overwritten by an older queued one. A full or
   stopped queue defers the save to the disconnect; a queued save never writes into a released world.
-- Nicknames are kept per world in `quickskin/nicknames.json` (`ServerNicknameStore`) with the
+- Nicknames are kept per world in `onlineskins/nicknames.json` (`ServerNicknameStore`) with the
   account name of every player who joined: read with `BoundedFileReader` before any player
   joins, because the join message is built before a client can send anything; at most 4096
   players, the one seen longest ago forgotten first; each change and join saved atomically on
@@ -354,11 +354,11 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
   store empty and is never saved over; a single invalid entry is dropped, while one that is only
   unknown to this Java version's Unicode tables is kept. An admin's nickname (`assigned`) and a
   lock (`locked`) are kept the same way.
-- Assigned skins and the skin pool are kept per world in `quickskin/assigned-skins.json`
+- Assigned skins and the skin pool are kept per world in `onlineskins/assigned-skins.json`
   (`ServerSkinAssignmentStore`): at most 4096 players (a new player is refused, nobody is
   evicted) and 64 pool skins, read before anyone joins and kept even when the texture cache does
   not hold a skin now; saved atomically on the cache-I/O executor after each change and again at
-  stop; a file that cannot be read leaves them empty and is never saved over. `SkinPoolFolder` adds the PNG skins of `config/quickskin-skins/`
+  stop; a file that cannot be read leaves them empty and is never saved over. `SkinPoolFolder` adds the PNG skins of `config/onlineskins-skins/`
   (regular files only, at most 64, each within the upload limit, 64x64 or an HD size and checked
   like an upload) at start, and off the server thread on `skin pool reload`.
 - Cape atlases produced by the editor or custom import paths must keep the complete vanilla Elytra
@@ -370,18 +370,18 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
   requires normalization.
 - Skins and capes live in a library every Minecraft instance of the computer shares
   (`SharedLibrary`: `%APPDATA%\QuickSkin`, `~/Library/Application Support/QuickSkin`, or
-  `$XDG_DATA_HOME/quickskin` / `~/.local/share/quickskin`), with its own `skin-preferences.json`.
+  `$XDG_DATA_HOME/onlineskins` / `~/.local/share/onlineskins`), with its own `skin-preferences.json`.
   Imports, the own skin and cloud downloads are written there; the instance's
-  `quickskin/uploads` folders are still read behind it, an asset both hold keeping the library's
+  `onlineskins/uploads` folders are still read behind it, an asset both hold keeping the library's
   file, and deleting an asset deletes every copy, or the one left would bring it back. The first
   time an instance uses the library, its own `skin-preferences.json` fills in the skins the
   library has no choice for (`sharedLibraryPreferencesMerged`); the instance's file is never
   changed. A folder that cannot be created or written leaves the instance on its own folders, as
-  before, and `-Dquickskin.sharedLibrary=false` or the packaged E2E harness never use it.
+  before, and `-Donlineskins.sharedLibrary=false` or the packaged E2E harness never use it.
   An animated cape's frame timing is kept in the library's `animations` folder, so the cape
   animates in every instance; timing an older version wrote into the instance's cache is copied
   there when it is read. CPM selects a model only by its path inside `player_models`, so the
-  library's `cpm-models` folder is mirrored into each instance's `player_models/quickskin-library`
+  library's `cpm-models` folder is mirrored into each instance's `player_models/onlineskins-library`
   before the scan (`CpmLibraryMirror`): a model kept elsewhere in `player_models` joins the
   library, the library's models are copied in, and a mirrored copy whose model left the library
   (deleted in another instance) is deleted; nothing outside that subfolder is ever deleted by the
@@ -420,7 +420,7 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
   with the text that names its size, or the too-big text when only its pixel count is over. The
   32 MB file limit is unchanged.
 - A cape saved through the cape editor keeps its original PNG, JPG, WebP or GIF in
-  `quickskin_cache/cape_editor_sources/<cape content ID>.<ext>` (`CapeEditorSources`). That file
+  `onlineskins_cache/cape_editor_sources/<cape content ID>.<ext>` (`CapeEditorSources`). That file
   only reopens `CapeAdjustScreen`: it is never scanned, registered as a texture or animation, or
   substituted for a cape that has none. An edit writes the new metadata and source association
   first, replaces the catalogued PNG in place, and re-points the active cape and its animation
@@ -471,14 +471,14 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
 - Real Camera finds the first-person body by a captured texture id containing `minecraft:skins/`.
   `RealCameraTextureIdMixin` prefixes Quick Skin skin ids inside Real Camera's own buffer record
   only; it is a fail-open shim without a compatibility lane. Do not rename the registered
-  `quickskin:` texture locations for another mod.
+  `onlineskins:` texture locations for another mod.
 - JourneyMap draws player head icons from a face it crops itself, and no JourneyMap build reaches
   a Quick Skin skin on its own: 1.20.1 downloads the Mojang skin, 1.21.1 to 1.21.3 accept only
   Mojang's `HttpTexture`, and every build caches the first face per player for the session.
   `JourneyMapIgnSkinMixin` (`IgnSkin.getFace`, every build) and `JourneyMapTextureCacheMixin`
   (`TextureCache.getPlayerSkinLocation`, 1.21.6 and later) answer with `JourneyMapPlayerFaces`:
   the worn skin's head front with its hat layer, scaled to JourneyMap's 24x24 face, registered
-  under one `quickskin:journeymap_face/<uuid>` id per player that a new skin replaces. Without a
+  under one `onlineskins:journeymap_face/<uuid>` id per player that a new skin replaces. Without a
   Quick Skin skin, or before it has loaded, JourneyMap keeps its own face. They are fail-open
   shims named by string without a compatibility lane; the face cache is bounded and cleared with
   the session. Xaero's Minimap and World Map read the player's skin through `PlayerInfo` and the
@@ -526,13 +526,13 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
 - Quick Skin's screens over the title screen draw the panorama the title screen last drew
   (`PanoramaRendererMixin` hands it to `BackgroundRenderer.rememberTitlePanorama`), so a mod
   that draws its own there, such as Aquamirae, or a resource pack carries over; before the
-  title screen has drawn one, and on NeoForge, which does not load `quickskin.mixins.json`,
+  title screen has drawn one, and on NeoForge, which does not load `onlineskins.mixins.json`,
   they draw the vanilla panorama.
 - Compatibility failures must degrade locally; they must not break base mod initialization or
   dedicated-server startup.
 - A release JAR holds only Quick Skin's own packages, so no other mod's copy of a library can
   stop the game at module resolution. Bundled libraries are pure Java, relocated below
-  `com.quickskin.mod.shadow` and called directly; never nest a library JAR, ship a native library
+  `com.onlineskins.mod.shadow` and called directly; never nest a library JAR, ship a native library
   or register a global Java service such as an ImageIO reader. `SafeImageReader` decodes WebP with
   the relocated TwelveMonkeys reader and leaves PNG and JPEG to ImageIO. `verify_release.py`
   enforces the JAR layout; see `DEPENDENCY-SECURITY.md`.
@@ -679,7 +679,7 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
   preview is showing the local player with the gun, which the preview's own draws record. Never
   start, stop or choose a TaCZ animation from Quick Skin, and never widen the hook beyond that
   check. It must stay fail-open (`@Pseudo`, targets named by string, gated on TaCZ's class file in
-  `EarsMixinPlugin`, `require = 0`) and listed in every copy of `quickskin-ears.mixins.json`,
+  `EarsMixinPlugin`, `require = 0`) and listed in every copy of `onlineskins-ears.mixins.json`,
   because the 1.20.1 overlay replaces the canonical file on the only lane official TaCZ exists
   for. The animation plays on the real local player, so other first-person draws of that
   player's model show it too; it never reaches the first-person arms.
@@ -719,8 +719,8 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
 
   The fan takes input only while it is open in the world with no screen, and a screen that opens
   or the end of the session puts it away at once. `MouseTurnMixin` and `PauseGameMixin` are
-  degradable (`require = 0`). Fabric and Forge load them from `quickskin.mixins.json`; NeoForge
-  loads them from `quickskin-input.mixins.json`. A card is put on along the skin menu's path: CPM's own workflow and
+  degradable (`require = 0`). Fabric and Forge load them from `onlineskins.mixins.json`; NeoForge
+  loads them from `onlineskins-input.mixins.json`. A card is put on along the skin menu's path: CPM's own workflow and
   `PlayerAppearanceService`. On a server with a skin-change cooldown the fan shows the seconds left
   and changes nothing, counting from its own last change until the server reports its cooldown.
   Every card shows a picture of the whole player, drawn off the render thread
@@ -889,8 +889,8 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
   goes away. Before 1.21.2 it cancels `ToastComponent.render`, which does both; from 1.21.2 it
   cancels `ToastManager.update` and `render` (`extractRenderState` from 26.1), since skipping the
   draw alone would let a toast run out its time unseen. The mixin is degradable (`require = 0`).
-  Fabric and Forge load it from `quickskin.mixins.json`; NeoForge loads it from
-  `quickskin-menu.mixins.json`. Quick Skin's own messages in its menus (`ErrorToast`) are drawn by
+  Fabric and Forge load it from `onlineskins.mixins.json`; NeoForge loads it from
+  `onlineskins-menu.mixins.json`. Quick Skin's own messages in its menus (`ErrorToast`) are drawn by
   its screens and never go through the game's toast manager.
 - GUI cape import evidence must go through `CapeImportWorkflow` from the real drop entry point:
   a translucent user cape with a transparent elytra area must be saved with the vanilla elytra
@@ -905,7 +905,7 @@ This file is part of the repository-wide instruction set imported by `AGENTS.md`
 - Settings evidence must show every tab through the real tab buttons, the keybind capture state,
   the non-admin server notice with inactive server controls, and the skin menu's own buttons over
   the vanilla in-world background; the captured tab must be the tab whose controls the assertion toggles.
-- The `server-policy` scenario is the only place a non-default `quickskin-server.json` exists. Its
+- The `server-policy` scenario is the only place a non-default `onlineskins-server.json` exists. Its
   seed comes solely from the contract's `orchestration.server_config`; the orchestrator writes it
   verbatim before the server starts. Evidence must prove the server override reached the client,
   that the server policy flattens transparency even when the client allows it, that the second

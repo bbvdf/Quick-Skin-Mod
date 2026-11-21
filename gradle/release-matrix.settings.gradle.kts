@@ -25,11 +25,11 @@ val runtimes = (matrix["runtimes"] as? List<*>)
 val requireString = BiFunction<Map<*, *>, String, String> { values, key ->
     requireNotNull(values[key]) { "Missing '$key' in $matrixFile" }.toString()
 }
-val buildTarget = providers.gradleProperty("quickskinTarget").orNull
+val buildTarget = providers.gradleProperty("onlineskinsTarget").orNull
 val buildArtifacts = if (buildTarget == null) artifacts else {
-    check(matrix["schema_version"] == 3) { "quickskinTarget requires release-matrix schema 3" }
+    check(matrix["schema_version"] == 3) { "onlineskinsTarget requires release-matrix schema 3" }
     artifacts.filter { it["artifact_version"] == buildTarget }.also {
-        check(it.isNotEmpty()) { "Unknown quickskinTarget '$buildTarget' in $matrixFile" }
+        check(it.isNotEmpty()) { "Unknown onlineskinsTarget '$buildTarget' in $matrixFile" }
     }
 }
 // Reject the obsolete multi-version command before configuring Loom or executing clean.

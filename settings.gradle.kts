@@ -1,32 +1,5 @@
 pluginManagement {
     repositories {
-        // The Plum Team's hash-checked mirror, on the team's own host, is searched first for
-        // everything but what it never holds: Mojang's and Minecraft's files and the namespaces
-        // Loom generates. A 404 falls through to the upstream repositories below.
-        // -Pplum.mavenMirror=false is the emergency switch that leaves it out, as in
-        // gradle/maven-mirror.gradle.kts.
-        val plumMirrorSwitch = providers.gradleProperty("plum.mavenMirror").orNull
-        require(plumMirrorSwitch == null || plumMirrorSwitch == "true" || plumMirrorSwitch == "false") {
-            "plum.mavenMirror must be true or false, not '$plumMirrorSwitch'"
-        }
-        if (plumMirrorSwitch != "false") {
-            maven("https://maven.quickskin.net/") {
-                name = "PlumMavenMirror"
-                // The mirror holds exactly the files in the verification metadata: a module's
-                // .module file, without the .pom that only points to it.
-                metadataSources { gradleMetadata(); mavenPom() }
-                mavenContent { releasesOnly() }
-                content {
-                    excludeGroupByRegex("com\\.mojang(\\..*)?")
-                    excludeGroupByRegex("de\\.oceanlabs\\.mcp(\\..*)?")
-                    excludeGroup("loom")
-                    excludeGroup("net.minecraft")
-                    excludeGroupByRegex("net\\.minecraftforge\\.[0-9a-f]{64}")
-                    excludeGroupByRegex("net\\.neoforged\\.fancymodloader\\.[0-9a-f]{64}")
-                    excludeGroupByRegex("remapped\\..+")
-                }
-            }
-        }
         maven("https://maven.fabricmc.net/") {
             name = "FabricPluginRepository"
             mavenContent { releasesOnly() }

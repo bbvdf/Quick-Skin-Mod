@@ -108,8 +108,8 @@ bundle, when a player comes into view.
 - A hidden piece does not show on any client, so armour-reading client mods (an armour HUD of
   other players) see it empty too; the server's own logic, and other mods on the server, still
   see it worn.
-- On NeoForge the new mixins live in their own configuration (`quickskin-armor.mixins.json`), since
-  NeoForge does not read `quickskin.mixins.json`.
+- On NeoForge the new mixins live in their own configuration (`onlineskins-armor.mixins.json`), since
+  NeoForge does not read `onlineskins.mixins.json`.
 - The skin menu's poses move the borrowed renderer's model; the world poses it again before every
   draw, so nothing shows outside the menu.
 - Packaged E2E covers no hidden armour yet, and the skin menu's and pause menu's captures now draw

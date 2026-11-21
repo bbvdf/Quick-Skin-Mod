@@ -38,10 +38,10 @@ keeps the entry it resolved first.
 ## Decision
 
 Servers may opt in to sharing uploaded account skins with players who do not run Quick Skin. The
-server option `shareAccountSkinWithVanillaClients` in `quickskin-server.json` is off by default.
+server option `shareAccountSkinWithVanillaClients` in `onlineskins-server.json` is off by default.
 
 - Quick Skin never uploads a skin by itself. After an explicit, successful Upload to Mojang the
-  client sends `quickskin:account_skin_changed` to the server, only on a negotiated v2 session
+  client sends `onlineskins:account_skin_changed` to the server, only on a negotiated v2 session
   that advertises the new optional capability `account-skin-refresh` (bit 4). Older peers never
   negotiate it and are unaffected.
 - The server ignores the report when the option is off, and logs that the option has no effect,
@@ -87,7 +87,7 @@ server option `shareAccountSkinWithVanillaClients` in `quickskin-server.json` is
   configuration, what unmodded players will see (`accountSkinVisibility`: `shared` when the option
   is on and the server authenticates with Mojang, `after_rejoin` when it is off on such a server,
   `unavailable` in offline mode or with another authentication service). This value is computed
-  for every sync and never stored in `quickskin-server.json`. The upload dialog shows the matching
+  for every sync and never stored in `onlineskins-server.json`. The upload dialog shows the matching
   text, and a neutral one when the server did not say.
 
 A third-party signing service stays excluded: it would upload players' skins to someone else's

@@ -3,19 +3,19 @@
   "loaders": {
     "fabric": {
       "files": {
-        "fabric/src/e2e/java/com/quickskin/mod/e2e/fabric/E2EFabricClient.java": "0b8e29f319f61a2c5ce0b1cf7d274a992f9b2da00189d11789c8958d074e4a04",
+        "fabric/src/e2e/java/com/onlineskins/mod/e2e/fabric/E2EFabricClient.java": "0b8e29f319f61a2c5ce0b1cf7d274a992f9b2da00189d11789c8958d074e4a04",
         "fabric/src/e2e/resources/fabric.mod.json": "253b17796720b9113d25e80891ac0e72800929e4abc8f36f8b852843787966e6"
       }
     },
     "forge": {
       "files": {
-        "forge/src/e2e/java/com/quickskin/mod/e2e/forge/E2EForge.java": "2d695940a038684f0e9a48ce6ecd0db604db260382847a1e7af065387247b3da",
+        "forge/src/e2e/java/com/onlineskins/mod/e2e/forge/E2EForge.java": "2d695940a038684f0e9a48ce6ecd0db604db260382847a1e7af065387247b3da",
         "forge/src/e2e/resources/META-INF/mods.toml": "09f041a9c4815e1c4cd0a518abea28f65f4df6521a375264021d4621f10b6d19"
       }
     },
     "neoforge": {
       "files": {
-        "neoforge/src/e2e/java/com/quickskin/mod/e2e/neoforge/E2ENeoForge.java": "a1544e77a713b869d5639a3a080602812306d7fa51fce2355d2da04b603691a0",
+        "neoforge/src/e2e/java/com/onlineskins/mod/e2e/neoforge/E2ENeoForge.java": "a1544e77a713b869d5639a3a080602812306d7fa51fce2355d2da04b603691a0",
         "neoforge/src/e2e/resources/META-INF/neoforge.mods.toml": "0c03bfdf5e721326bc472ca4b7e5686a9dd4106e5dd2274d8ce2ea1396c4fb39"
       }
     }

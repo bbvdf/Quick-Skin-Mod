@@ -1,0 +1,44 @@
+{
+  "required": true,
+  "package": "com.onlineskins.mod.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "priority": 2000,
+  "client": [
+    "PlayerInfoMixin",
+    "MixinAbstractClientPlayer",
+    "PlayerRendererMixin",
+    "SkinManagerMixin",
+    "CapeLayerMixin",
+    "ItemInHandRendererMixin",
+    "PanoramaRendererMixin",
+    "PreviewEquipmentMixin",
+    "PreviewSkinSwapPoseMixin",
+    "armor.EntityRenderDispatcherPlayersMixin",
+    "armor.LivingEntityRendererLayersMixin",
+    "armor.LocalArmorLayerMixin",
+    "armor.LocalArmorRenderMixin",
+    "armor.LocalElytraLayerMixin",
+    "armor.LocalHeadLayerMixin",
+    "armor.PreviewArmorPoseMixin",
+    "input.MouseTurnMixin",
+    "input.PauseGameMixin",
+    "menu.MenuToastsMixin"
+  ],
+  "mixins": [
+    "ChunkMapAccessor",
+    "PlayerGameProfileAccessor",
+    "TrackedEntityAccessor",
+    "nickname.PlayerDisplayNameMixin",
+    "nickname.PlayerListJoinMessageMixin",
+    "nickname.ServerGamePacketListenerLeaveMessageMixin",
+    "nickname.ServerPlayerTabNameMixin",
+    "armor.ServerEquipmentFilterMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrite": {
+    "conformVisibility": true
+  }
+}

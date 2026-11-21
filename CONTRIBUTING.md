@@ -195,7 +195,7 @@ weaken the validator or treat the final convention-apply line alone as sufficien
 Run the smallest useful test while developing. On Unix-like systems:
 
 ```bash
-./gradlew --no-daemon --no-parallel -PquickskinTarget=1.20.1 testStableLane
+./gradlew --no-daemon --no-parallel -PonlineskinsTarget=1.20.1 testStableLane
 ```
 
 On Windows, replace `./gradlew` with `.\gradlew.bat`.

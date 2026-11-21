@@ -132,7 +132,7 @@ Choose the jar whose Minecraft version and loader match your instance. Quick Ski
 Install Quick Skin on the client for local appearance management. Install it on the server as well when you want Quick Skin appearance synchronization, shared texture transfer, or server-enforced cooldowns.
 
 Server administrators can limit the size of each synchronized skin or cape with
-`maxTextureUploadKilobytes` in `config/quickskin-server.json`: 64 to 16384 KiB, default 16384.
+`maxTextureUploadKilobytes` in `config/onlineskins-server.json`: 64 to 16384 KiB, default 16384.
 Edit the file while the server is stopped, because the server reads it at startup and writes its
 settings back when it stops. A value outside that range is clamped, and a file that cannot be
 parsed is left as it is while the defaults apply. Players with a skin or cape over the limit keep
@@ -152,10 +152,10 @@ A server with Quick Skin tells each player who joins without it, once per world,
 uses Quick Skin and where to get it: one chat message in the language of their game, beside a
 little pixel-art Plum, with a link to the Modrinth page. A minute after the join, so a client that does run Quick Skin has time to
 say so; Bedrock players joining through Geyser are not told, since they cannot install it. In
-`config/quickskin-server.json`, `notifyPlayersWithoutQuickSkin` turns it off,
+`config/onlineskins-server.json`, `notifyPlayersWithoutQuickSkin` turns it off,
 `playersWithoutQuickSkinMessage` replaces the text (the link follows it) and
 `playersWithoutQuickSkinLink` changes the link (an `http` or `https` address; empty sends no
-link). The players already told are listed in the world's `quickskin/missing_mod_notices` folder;
+link). The players already told are listed in the world's `onlineskins/missing_mod_notices` folder;
 delete a player's file there to tell them again.
 
 Players who do not run Quick Skin never see a Quick Skin appearance, even on a server that has
@@ -169,7 +169,7 @@ stay visible only to players who run Quick Skin.
 Other players without Quick Skin see the new account skin after you rejoin the server (if you host
 a LAN world, restart the game instead). An online-mode server that runs Quick Skin can show it to
 them without a rejoin: set `"shareAccountSkinWithVanillaClients": true` in
-`config/quickskin-server.json` and restart the server. After each upload the server then reads your
+`config/onlineskins-server.json` and restart the server. After each upload the server then reads your
 newly signed skin from Mojang's session server, usually within a minute or two, and refreshes you
 for the players without Quick Skin. The option is off by default. It has no effect on an
 offline-mode server, including a backend behind a BungeeCord or Velocity proxy (the backend runs
@@ -196,13 +196,13 @@ still shows it. Players with Quick Skin also see nicknames on name tags; players
 account names above heads.
 
 Because Minecraft announces a player before their client can send anything, the server remembers
-nicknames per world (`quickskin/nicknames.json`): the first join after you choose one still shows
+nicknames per world (`onlineskins/nicknames.json`): the first join after you choose one still shows
 the previous name, followed by the announcement. A nickname holds up to 32 letters (any script),
 digits, spaces and `_ - . , '`, and it can change every 10 seconds. It may not read like (ignoring
 case, accents and look-alike letters) the name of a player online, an operator or a whitelisted
 player, nor the name or nickname of anyone who joined the world before; a nickname that reads like
 a player's name is cleared when that player joins. Server owners stop players from choosing
-nicknames with `"allowNicknames": false` in `config/quickskin-server.json`; names an admin gives
+nicknames with `"allowNicknames": false` in `config/onlineskins-server.json`; names an admin gives
 still show. A mod that sets its own tab-list names (TAB, Styled Player List) keeps them. See
 [ADR 0015](docs/architecture/decisions/0015-show-cosmetic-nicknames-through-display-names.md).
 
@@ -211,22 +211,22 @@ selectors as usual:
 
 | Command | Effect |
 |---|---|
-| `/quickskin nickname set <player> <nickname>` | Gives the player that nickname for now: it shows instead of their own until taken back, and they cannot change theirs meanwhile. |
-| `/quickskin nickname random <players>` | Gives each player a different name from `config/quickskin-nicknames.txt`, for a game where nobody should know who is who. |
-| `/quickskin nickname reset [players]` | Takes back the names an admin gave; players show their own nickname again. With no players, of everyone, also of players who are not online, whose names are then free again. |
-| `/quickskin nickname clear <players>` | Removes every nickname the players have, so their account names show. |
-| `/quickskin nickname lock <players>` / `unlock <players>` | Stops, or lets again, players change their own nickname. |
+| `/onlineskins nickname set <player> <nickname>` | Gives the player that nickname for now: it shows instead of their own until taken back, and they cannot change theirs meanwhile. |
+| `/onlineskins nickname random <players>` | Gives each player a different name from `config/onlineskins-nicknames.txt`, for a game where nobody should know who is who. |
+| `/onlineskins nickname reset [players]` | Takes back the names an admin gave; players show their own nickname again. With no players, of everyone, also of players who are not online, whose names are then free again. |
+| `/onlineskins nickname clear <players>` | Removes every nickname the players have, so their account names show. |
+| `/onlineskins nickname lock <players>` / `unlock <players>` | Stops, or lets again, players change their own nickname. |
 
 Only the player and the operators hear about a name an admin gives, so a round of a game can hand
 out names without announcing who is who; the operators still see the account names in the tab
-list. For a game where admins play too, put `silent` after `/quickskin`, for example
-`/quickskin silent nickname random @a`: only the players themselves learn their names. Nothing
+list. For a game where admins play too, put `silent` after `/onlineskins`, for example
+`/onlineskins silent nickname random @a`: only the players themselves learn their names. Nothing
 is said to whoever runs the command, to other operators or in a command block's output (its
 result count still drives a comparator), and the names it gives show no account name beside
 them anywhere, in the operators' tab list or in join and leave messages, until they are taken
 back. `silent` works before every `nickname` and `skin` command but the pool's. Names an admin
 gives follow the same rules, without the 10-second wait. The server writes
-`config/quickskin-nicknames.txt` with about ninety given names that suit anyone the first time it
+`config/onlineskins-nicknames.txt` with about ninety given names that suit anyone the first time it
 starts; edit it freely (one name per line, `#` starts a comment), for example with the NATO
 alphabet for code names. To clear a player's nickname for good, run `clear` and then `lock`.
 
@@ -243,16 +243,16 @@ skin's `×` removes it. The same works with commands, which take selectors:
 
 | Command | Effect |
 |---|---|
-| `/quickskin skin set <players> <pool skin>` | Gives the players that pool skin for now. |
-| `/quickskin skin copy <players> <player>` | Gives them the skin that player shows. |
-| `/quickskin skin random <players>` | Gives each a random pool skin, all different while the pool has enough. |
-| `/quickskin skin shuffle <players>` | Swaps their own Quick Skin skins among them. |
-| `/quickskin skin reset [players]` | Takes the given skins back; with no players, everyone's, also of players who are not online. |
-| `/quickskin skin pool list` / `add <name> <player>` / `remove <name>` / `reload` | Lists the pool, adds the skin a player shows, removes one, or reads the skin folder again. |
+| `/onlineskins skin set <players> <pool skin>` | Gives the players that pool skin for now. |
+| `/onlineskins skin copy <players> <player>` | Gives them the skin that player shows. |
+| `/onlineskins skin random <players>` | Gives each a random pool skin, all different while the pool has enough. |
+| `/onlineskins skin shuffle <players>` | Swaps their own Quick Skin skins among them. |
+| `/onlineskins skin reset [players]` | Takes the given skins back; with no players, everyone's, also of players who are not online. |
+| `/onlineskins skin pool list` / `add <name> <player>` / `remove <name>` / `reload` | Lists the pool, adds the skin a player shows, removes one, or reads the skin folder again. |
 
-The server keeps the skins it gave and its pool per world (`quickskin/assigned-skins.json`), so
+The server keeps the skins it gave and its pool per world (`onlineskins/assigned-skins.json`), so
 they last across reconnects and restarts until taken back. PNG skins (64x64 or an HD size) placed
-in `config/quickskin-skins/` join the pool when the server starts or on `skin pool reload`, named
+in `config/onlineskins-skins/` join the pool when the server starts or on `skin pool reload`, named
 after their file; a name ending in `_slim` or `_classic` sets the arms, which are read from the
 skin otherwise. The pool holds up to 64 skins. Players without Quick Skin keep seeing everyone's
 Mojang skins, a CPM model stays the look of whoever wears one, and capes are not changed. See
@@ -272,14 +272,14 @@ visibility toggle, the eye in its inventory. A hidden piece is still worn and pr
 equipment it sends other players, so nobody sees it, players without Quick Skin included, and you
 no longer see it in third person, in your inventory or in the menus either. This needs Quick Skin
 on the server; a server owner who prefers everyone's armour to show, for example for PvP, sets
-`"allowHiddenArmor": false` in `config/quickskin-server.json`. See
+`"allowHiddenArmor": false` in `config/onlineskins-server.json`. See
 [ADR 0017](docs/architecture/decisions/0017-hide-armour-pieces-from-everyone.md).
 
 ## Using Quick Skin
 
 1. Open the Quick Skin menu from the title or pause screen, or bind its configurable key.
-2. Import a skin or place it under `.minecraft/quickskin/skins/`.
-3. Import a cape or place it under `.minecraft/quickskin/capes/`.
+2. Import a skin or place it under `.minecraft/onlineskins/skins/`.
+3. Import a cape or place it under `.minecraft/onlineskins/capes/`.
 4. Select an appearance, preview it, and choose automatic, classic, or slim arms.
 
 On Android launchers such as MJLauncher, Import opens a file browser inside Minecraft, starting
@@ -317,7 +317,7 @@ stage and verify the JARs separately with `scripts/release/verify_release.py`.
 To work on one Minecraft target, register only that target's modules and loaders:
 
 ```bash
-./gradlew --no-parallel -PquickskinTarget=1.21.1 buildTargetLanes buildTargetE2EHarnesses
+./gradlew --no-parallel -PonlineskinsTarget=1.21.1 buildTargetLanes buildTargetE2EHarnesses
 python3 scripts/release/verify_release.py --target 1.21.1 --stage build/target --manifest build/target/artifacts.json
 ```
 
@@ -336,8 +336,8 @@ forge/versions/1.20.1/build/libs/
 Development launches can use the same target scope:
 
 ```bash
-./gradlew -PquickskinTarget=1.20.1 :fabric:1.20.1:runClient
-./gradlew -PquickskinTarget=1.20.1 :forge:1.20.1:runServer
+./gradlew -PonlineskinsTarget=1.20.1 :fabric:1.20.1:runClient
+./gradlew -PonlineskinsTarget=1.20.1 :forge:1.20.1:runServer
 ```
 
 The aggregate build intentionally runs with `org.gradle.parallel=false`; Architectury's transformers use JVM-global properties and concurrent transforms are not safe.

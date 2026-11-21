@@ -58,16 +58,16 @@
 > Capes now belong to skins: each skin wears its own cape or none, and putting a skin on, from the skin menu or the favourites fan, puts its cape on. The cape menu picks the cape of the skin you are wearing; right-click any skin in the skin menu and pick Assign a cape... to choose another skin's. Its Elytra tab picks what the elytra wear with that skin (its cape, vanilla's elytra or another cape). A skin without a cape shows none at all, not even your Mojang cape, to you and to everyone else. A skin with a cape has it hanging from its card as a ribbon, edged purple when it also has its own elytra. When you update, the cape you are wearing goes to the skin you are wearing; your other skins start without one. CPM models wear no Quick Skin cape.
 
 - **Your skins in every modpack**
-> Skins, capes (animated ones too) and CPM models you import are kept in one library outside the Minecraft instance (`%APPDATA%\QuickSkin` on Windows, `~/Library/Application Support/QuickSkin` on macOS, `~/.local/share/quickskin` on Linux), so every modpack on your computer lists the same skins with the same favourites, models and the cape each skin puts on. Each modpack's own `quickskin/uploads` and CPM `player_models` folders are still read.
+> Skins, capes (animated ones too) and CPM models you import are kept in one library outside the Minecraft instance (`%APPDATA%\QuickSkin` on Windows, `~/Library/Application Support/QuickSkin` on macOS, `~/.local/share/onlineskins` on Linux), so every modpack on your computer lists the same skins with the same favourites, models and the cape each skin puts on. Each modpack's own `onlineskins/uploads` and CPM `player_models` folders are still read.
 
 - **Hide Cosmetic Armor pieces from everyone**
 > With Cosmetic Armor Reworked, a cosmetic piece over your armour is now a piece of its own on the skin menu's model: hide it and every other player sees the armour under it instead, like any hidden piece. The server needs this update for others to see it.
 
 - **Silent admin commands**
-> Put `silent` after `/quickskin` (for example `/quickskin silent nickname random @a`) and only the players themselves learn their new names or skins: nothing is said to whoever runs the command, to other operators or in a command block's output, and the names it gives show no account name beside them in the operators' tab list or in join and leave messages. Made for games where the admins play too.
+> Put `silent` after `/onlineskins` (for example `/onlineskins silent nickname random @a`) and only the players themselves learn their new names or skins: nothing is said to whoever runs the command, to other operators or in a command block's output, and the names it gives show no account name beside them in the operators' tab list or in join and leave messages. Made for games where the admins play too.
 
 - **Servers can turn HD skins off**
-> An operator can untick Allow HD skins in the Server tab of Quick Skin's settings, and the server then takes standard 64x64 skins only, at once and without a restart; ticking it again allows them again. For another limit, set `maxSkinResolution` in `config/quickskin-server.json` to the widest skin allowed (`128` for up to 128x128, `0` for none). Capes are not limited. A player whose skin is wider keeps it on their own screen and gets a chat message, and the rest of their look still syncs.
+> An operator can untick Allow HD skins in the Server tab of Quick Skin's settings, and the server then takes standard 64x64 skins only, at once and without a restart; ticking it again allows them again. For another limit, set `maxSkinResolution` in `config/onlineskins-server.json` to the widest skin allowed (`128` for up to 128x128, `0` for none). Capes are not limited. A player whose skin is wider keeps it on their own screen and gets a chat message, and the rest of their look still syncs.
 
 ### Fixes
 
@@ -130,13 +130,13 @@
 > Mark skins and CPM models as favourites to keep them right after your own skin in every sort order. Right-click a skin to favourite, rename or delete it, or use the bin beside the view button to pick several skins and delete them together. Added, favourited and deleted skins now animate in the column.
 
 - **Nicknames**
-> Click the name above your player in the skin menu to pick a nickname, kept per launcher account. On a server with Quick Skin everyone sees it in chat, death and advancement messages and the tab list, players without Quick Skin included, and players with Quick Skin also see it above your head; join and leave messages show "Nickname (Account)", operators still see account names in the tab list, and commands keep using account names. Server owners can turn player nicknames off with `allowNicknames` in `config/quickskin-server.json`.
+> Click the name above your player in the skin menu to pick a nickname, kept per launcher account. On a server with Quick Skin everyone sees it in chat, death and advancement messages and the tab list, players without Quick Skin included, and players with Quick Skin also see it above your head; join and leave messages show "Nickname (Account)", operators still see account names in the tab list, and commands keep using account names. Server owners can turn player nicknames off with `allowNicknames` in `config/onlineskins-server.json`.
 
 - **Hide pieces of your armour from everyone**
-> The skin menu's and the pause menu's models now wear what you wear and hold. Hover a piece of armour or an elytra on the skin menu's model to see through it, and click it to hide it from every other player, players without Quick Skin included; the piece stays worn and still protects you, and hidden pieces lie on the floor around the turntable, where a click puts them back on. The choice is kept per launcher account, and server owners can turn it off with `allowHiddenArmor` in `config/quickskin-server.json`, for example for PvP.
+> The skin menu's and the pause menu's models now wear what you wear and hold. Hover a piece of armour or an elytra on the skin menu's model to see through it, and click it to hide it from every other player, players without Quick Skin included; the piece stays worn and still protects you, and hidden pieces lie on the floor around the turntable, where a click puts them back on. The choice is kept per launcher account, and server owners can turn it off with `allowHiddenArmor` in `config/onlineskins-server.json`, for example for PvP.
 
 - **Admin tools for nicknames and skins**
-> Operators can give players nicknames with `/quickskin nickname set`, hand out a different name to each player from `config/quickskin-nicknames.txt` with `random`, and take them back, clear or lock them with `reset`, `clear`, `lock` and `unlock`. They can also give players a skin for now, which other Quick Skin players see over the player's own skin until it is taken back, from the Player skins panel in the Server tab of the settings or with `/quickskin skin set|copy|random|shuffle|reset`; PNG skins put in `config/quickskin-skins/` join the server's skin pool (`/quickskin skin pool list|add|remove|reload`). Made for games where nobody should know who is who.
+> Operators can give players nicknames with `/onlineskins nickname set`, hand out a different name to each player from `config/onlineskins-nicknames.txt` with `random`, and take them back, clear or lock them with `reset`, `clear`, `lock` and `unlock`. They can also give players a skin for now, which other Quick Skin players see over the player's own skin until it is taken back, from the Player skins panel in the Server tab of the settings or with `/onlineskins skin set|copy|random|shuffle|reset`; PNG skins put in `config/onlineskins-skins/` join the server's skin pool (`/onlineskins skin pool list|add|remove|reload`). Made for games where nobody should know who is who.
 
 - **A reworked cape menu**
 > Capes are now cards in sections (Favourites, My Capes, then the built-in capes by where they come from) under a heading that stays pinned while you scroll, with an import tile at the end of My Capes that you can click or drop files on. A large player on the right wears whichever cape is under the mouse, with the worn cape's animation speed under it; a click wears a cape, a right click marks it as a favourite or, for your own capes, edits or deletes it, and the mouse wheel scrolls the list wherever the mouse is.
@@ -172,7 +172,7 @@
 > Servers now also share the last appearance of players who are not connected, so mods that draw absent players, such as BlockPops' player figures, show their Quick Skin skins instead of Steve or Alex. Only the server needs this update.
 
 - **Tell players without Quick Skin about it**
-> A server with Quick Skin now tells each player who joins without it, once per world and a minute after they join, that the server uses Quick Skin and where to get it, in their game's language. Server owners can turn it off with `notifyPlayersWithoutQuickSkin` in `config/quickskin-server.json`, or change the text with `playersWithoutQuickSkinMessage` and the link with `playersWithoutQuickSkinLink`; Bedrock players are never told.
+> A server with Quick Skin now tells each player who joins without it, once per world and a minute after they join, that the server uses Quick Skin and where to get it, in their game's language. Server owners can turn it off with `notifyPlayersWithoutQuickSkin` in `config/onlineskins-server.json`, or change the text with `playersWithoutQuickSkinMessage` and the link with `playersWithoutQuickSkinLink`; Bedrock players are never told.
 
 - **Quick Skin faces on JourneyMap**
 > JourneyMap's player icons, on the minimap and the fullscreen map, now show the face of the player's Quick Skin skin and update when the skin changes.
@@ -226,10 +226,10 @@
 > *@Suelvys thx for the idea!*
 
 - **Players without Quick Skin can see your new account skin**
-> Server owners can turn on `shareAccountSkinWithVanillaClients` in `config/quickskin-server.json` (off by default). On an online-mode server, when you upload a skin to your Mojang account with the Upload to Mojang button, players who don't have Quick Skin see the new skin within a minute or two instead of only after you rejoin. Capes, HD skins and CPM models are still only visible to players with Quick Skin.
+> Server owners can turn on `shareAccountSkinWithVanillaClients` in `config/onlineskins-server.json` (off by default). On an online-mode server, when you upload a skin to your Mojang account with the Upload to Mojang button, players who don't have Quick Skin see the new skin within a minute or two instead of only after you rejoin. Capes, HD skins and CPM models are still only visible to players with Quick Skin.
 
 - **Upload limit for servers**
-> Server owners can choose the biggest skin or cape that is synced to other players with `maxTextureUploadKilobytes` in `config/quickskin-server.json` (64 to 16384 KiB, 16384 by default). A skin or cape over the limit stays on your own screen, a chat message tells you why, and the rest of your appearance still syncs. Players on Quick Skin 3.1.0 or older should update before a server lowers the limit.
+> Server owners can choose the biggest skin or cape that is synced to other players with `maxTextureUploadKilobytes` in `config/onlineskins-server.json` (64 to 16384 KiB, 16384 by default). A skin or cape over the limit stays on your own screen, a chat message tells you why, and the rest of your appearance still syncs. Players on Quick Skin 3.1.0 or older should update before a server lowers the limit.
 
 ### Fixes
 

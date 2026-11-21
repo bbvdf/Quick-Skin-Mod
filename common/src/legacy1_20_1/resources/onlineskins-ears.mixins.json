@@ -1,0 +1,26 @@
+{
+  "required": false,
+  "package": "com.onlineskins.mod.mixin.compat",
+  "compatibilityLevel": "JAVA_17",
+  "minVersion": "0.8",
+  "plugin": "com.onlineskins.mod.mixin.compat.EarsMixinPlugin",
+  "client": [
+    "EtfPlayerTextureMixin",
+    "EarsLayerRendererMixin",
+    "EarsModMixin",
+    "EarsFiveMixin",
+    "EarsFiveBuzzMixin",
+    "CpmModelDefinitionLoaderMixin",
+    "TaczPreviewAnimationMixin",
+    "CosmeticArmorRenderMixin",
+    "CpmRenderDepthMixin",
+    "CpmSubmitCollectorMixin",
+    "RealCameraTextureIdMixin",
+    "JourneyMapIgnSkinMixin",
+    "JourneyMapTextureCacheMixin",
+    "ReplayModCompatMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

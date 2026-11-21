@@ -59,7 +59,7 @@ val legacyArtifactHash = MessageDigest.getInstance("SHA-256")
     .digest(legacyArtifactIdentity.toByteArray(StandardCharsets.UTF_8))
     .joinToString("") { "%02x".format(it) }
 val legacyArchitecturyPackage = (
-    "architectury_inject_quickskin_common_${rootProject.property("architectury_inject_id")}_" +
+    "architectury_inject_onlineskins_common_${rootProject.property("architectury_inject_id")}_" +
         "$legacyArtifactHash${legacyCommonJar.fileName}"
 ).filter { Character.isJavaIdentifierPart(it) }
 

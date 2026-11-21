@@ -282,14 +282,14 @@ and restarting observation must not dispatch new work or grant merge/publication
 Fast stable unit lane:
 
 ```powershell
-.\gradlew.bat --no-parallel -PquickskinTarget=1.20.1 testStableLane
+.\gradlew.bat --no-parallel -PonlineskinsTarget=1.20.1 testStableLane
 ```
 
 The active common test lane:
 
 ```powershell
 .\gradlew.bat --no-daemon --no-parallel `
-  -PquickskinTarget=1.20.1 :common:1.20.1:test
+  -PonlineskinsTarget=1.20.1 :common:1.20.1:test
 ```
 
 Full production and packaged-harness gate:

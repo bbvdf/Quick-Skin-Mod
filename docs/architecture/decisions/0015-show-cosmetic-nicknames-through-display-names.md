@@ -35,7 +35,7 @@ decompiled 1.20.1 to 26.3 jars, vanilla and Forge/NeoForge builds):
   loader), and nobody sees their own join message.
 - A name tag above a head is drawn from the client's own `getDisplayName()`, so a server cannot
   change it for vanilla clients short of renaming the profile or abusing team prefixes.
-- NeoForge never reads `quickskin.mixins.json`; it reads only the configurations its
+- NeoForge never reads `onlineskins.mixins.json`; it reads only the configurations its
   `neoforge.mods.toml` declares.
 
 ## Decision
@@ -50,7 +50,7 @@ A player may pick a cosmetic nickname; the account name keeps every role it has 
   are refused. The account name, or a blank one, means none. Two names *read alike* when they are
   equal once compatibility forms are decomposed, accents dropped, the Cyrillic and Greek letters
   Minecraft's font draws like Latin ones folded to them, and case ignored.
-- **Client.** The nickname is kept per launcher account in `quickskin-client.json`
+- **Client.** The nickname is kept per launcher account in `onlineskins-client.json`
   (`accountNicknames`, keyed like the skin selection) and chosen through the skin menu's name
   tag. On a session that negotiated the new optional capability `nicknames` (bit 5) the client
   sends it once (an empty one too, so a removed nickname is forgotten) and after every change,
@@ -60,7 +60,7 @@ A player may pick a cosmetic nickname; the account name keeps every role it has 
   do not depend on the Java version's Unicode tables, one by one, since a server on a newer Java
   may accept a letter an older client does not know.
 - **Server.** `ServerNicknameStore` keeps each player's nickname in the world's
-  `quickskin/nicknames.json` (at most 4096 players, the longest unseen forgotten first, read at
+  `onlineskins/nicknames.json` (at most 4096 players, the longest unseen forgotten first, read at
   start, saved atomically on the cache-I/O worker, never overwritten when unreadable), so a
   returning player's join message can use it. The store also remembers the account name of
   everyone who joined (within the same bound). A request is admitted only from that exact
@@ -88,9 +88,9 @@ A player may pick a cosmetic nickname; the account name keeps every role it has 
   clients receive the nicknames of the players online over the `nicknames` capability and show
   them on name tags. The profile, `getName`, `getPlainTextName` and `getScoreboardName` are never
   touched.
-- **Admins.** `/quickskin nickname`, for permission level 2 and registered through Architectury's
+- **Admins.** `/onlineskins nickname`, for permission level 2 and registered through Architectury's
   `CommandRegistrationEvent`, gives one player a nickname for now (`set`) or each player a
-  different name from `config/quickskin-nicknames.txt` (`random`), takes those back (`reset`;
+  different name from `config/onlineskins-nicknames.txt` (`random`), takes those back (`reset`;
   without players, everyone's, also of players who left, whose names are then free again),
   removes every nickname of the players (`clear`) and locks or unlocks their own (`lock`,
   `unlock`). The server writes the list file with about ninety given names that suit anyone when
@@ -107,15 +107,15 @@ A player may pick a cosmetic nickname; the account name keeps every role it has 
   whether they may change their nickname: `ASSIGNED` or `LOCKED` while they may not,
   `UNCHANGED` while they may, when the session becomes ready and after each admin change. While
   they may not, the skin menu's name tag opens no dialog and its tooltip says why.
-- **Silent commands.** For games where admins play too, `/quickskin silent nickname ...` (and
+- **Silent commands.** For games where admins play too, `/onlineskins silent nickname ...` (and
   `silent skin ...`, the pool's commands excepted) runs the same commands with vanilla's
   suppressed output, as a function's commands run: no feedback to whoever runs them, a command
   block included, nor to other operators, while the result count still reaches a comparator.
   The nicknames they give are `secret` in the store (saved with it): join and leave messages and
   the operators' tab list show them without the account name, and the server log notes the
   change without pairing them. Only the player learns the name; the secret ends with it.
-- **Loaders.** The four mixins live in `com.quickskin.mod.mixin.nickname`, listed in every
-  `quickskin.mixins.json` for Fabric and Forge and in `quickskin-nicknames.mixins.json`, which both
+- **Loaders.** The four mixins live in `com.onlineskins.mod.mixin.nickname`, listed in every
+  `onlineskins.mixins.json` for Fabric and Forge and in `onlineskins-nicknames.mixins.json`, which both
   NeoForge `neoforge.mods.toml` files declare. Each injector is degradable (`require = 0`): a
   missed hook leaves the account name showing.
 

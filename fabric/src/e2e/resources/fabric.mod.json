@@ -8,10 +8,10 @@
   "environment": "client",
   "entrypoints": {
     "client": [
-      "com.quickskin.mod.e2e.fabric.E2EFabricClient"
+      "com.onlineskins.mod.e2e.fabric.E2EFabricClient"
     ]
   },
   "depends": {
-    "quickskin": "*"
+    "onlineskins": "*"
   }
 }

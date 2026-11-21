@@ -68,7 +68,7 @@ val generateE2EContractJava = tasks.register<Exec>("generateE2EContractJava") {
     )
     inputs.property("pythonExecutable", contractPython)
     val outputFile = generatedE2EContractJava.map {
-        it.file("com/quickskin/mod/e2e/generated/ScenarioContract.java")
+        it.file("com/onlineskins/mod/e2e/generated/ScenarioContract.java")
     }
     outputs.file(outputFile)
     workingDir(rootProject.projectDir)

@@ -1,0 +1,48 @@
+//? if >=1.21 {
+package com.onlineskins.mod.networking.payloads;
+
+import com.onlineskins.mod.platform.QuickSkinInfo;
+import com.onlineskins.mod.networking.TextureTransferLimits;
+import io.netty.buffer.ByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+//? if <1.21.11 {
+import net.minecraft.resources.ResourceLocation;
+//?} else {
+import net.minecraft.resources.Identifier;
+//?}
+
+/**
+ * Payload for sending animation metadata to client (S2C)
+ * Format: String (hash) + String (metadataJson)
+ */
+public record SendAnimationMetadataPayload(String hash, String metadataJson) implements CustomPacketPayload {
+
+    public static final Type<SendAnimationMetadataPayload> TYPE = new Type<>(
+        //? if <1.21.11 {
+        ResourceLocation.fromNamespaceAndPath(QuickSkinInfo.MOD_ID, "send_animation_metadata")
+        //?} else {
+        Identifier.fromNamespaceAndPath(QuickSkinInfo.MOD_ID, "send_animation_metadata")
+        //?}
+    );
+
+    public static final StreamCodec<ByteBuf, SendAnimationMetadataPayload> CODEC = StreamCodec.of(
+        (buf, payload) -> {
+            PayloadCodecs.writeString(buf, payload.hash, TextureTransferLimits.CONTENT_ID_LENGTH);
+            // Written within the validated metadata bound; read tolerantly up to MAX_JSON_BYTES.
+            PayloadCodecs.writeString(buf, payload.metadataJson,
+                    TextureTransferLimits.MAX_ANIMATION_METADATA_JSON_BYTES);
+        },
+        buf -> new SendAnimationMetadataPayload(
+            PayloadCodecs.readString(buf, TextureTransferLimits.CONTENT_ID_LENGTH),
+            PayloadCodecs.readString(buf, TextureTransferLimits.MAX_JSON_BYTES)
+        )
+    );
+
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
+}
+
+//?}

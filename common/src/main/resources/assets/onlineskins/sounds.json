@@ -1,0 +1,7 @@
+{
+  "fan.open": {"sounds": ["onlineskins:fan/open"]},
+  "fan.point": {"sounds": ["onlineskins:fan/point"]},
+  "fan.page": {"sounds": ["onlineskins:fan/page"]},
+  "fan.choose": {"sounds": ["onlineskins:fan/choose"]},
+  "fan.wear": {"sounds": ["onlineskins:fan/wear"]}
+}

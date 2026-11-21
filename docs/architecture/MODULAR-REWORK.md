@@ -131,7 +131,7 @@ the same lanes.
   production JARs and 32 harnesses) from one source; 26.3 was added afterwards directly from the
   shared source. `scripts/release/build_matrix.py` runs one serial Gradle
   process per target, because a single-JVM aggregate exhausted its heap during remapping, and
-  `-PquickskinTarget` scopes a build to one target. A forced rebuild reproduced all 64 JARs
+  `-PonlineskinsTarget` scopes a build to one target. A forced rebuild reproduced all 64 JARs
   byte-for-byte.
 - **Selective evidence.** Scenario contract schema 3 declares module/binding coverage and
   prerequisites. Git-object admission binds exact base/head/policy identities, selected curation

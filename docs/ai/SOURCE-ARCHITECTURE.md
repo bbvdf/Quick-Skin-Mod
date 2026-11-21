@@ -109,12 +109,12 @@ the actual import owner and exercise the same composed saved-appearance path.
 `AccountSkinShareService`, its session-server parsing, the Mojang signature check
 (`TexturesSignatureVerifier`) and the authentication-environment detection
 (`MojangAuthenticationEnvironment`) belong to `server-appearance` (package
-`com.quickskin.mod.server.vanilla`); networking only admits the `account_skin_changed` report,
+`com.onlineskins.mod.server.vanilla`); networking only admits the `account_skin_changed` report,
 hands it over and sends the service's `accountSkinVisibility` with the server configuration. `ServerRuntime` binds the service to the running server through
 `AccountSkinProfileTarget`, the `common` bridge that owns the `ChunkMap`, tracked-entity and
 `Player.gameProfile` accessors and the player-info and entity-pairing packets (ADR 0012).
-NeoForge, which never reads `quickskin.mixins.json`, loads those accessors from its own
-`quickskin-account-skin.mixins.json`.
+NeoForge, which never reads `onlineskins.mixins.json`, loads those accessors from its own
+`onlineskins-account-skin.mixins.json`.
 `skin-upload` reports a successful upload through `ClientNetworkActions`.
 
 Nicknames (ADR 0015) follow the same split. `Nickname` (content-core) owns the rules;
@@ -124,8 +124,8 @@ and `NicknameScreen` (skin-menu) the menu. `ServerNicknameStore` (server-appeara
 world's nicknames and decides each request. Networking owns the `nicknames` capability's payloads,
 the client's `NicknameSyncService` and `PlayerNicknameRepository` (client-foundation) writes, and
 `ServerNicknames`, which answers requests, syncs Quick Skin clients and sends per-viewer tab-list
-names. `common` owns `NicknameDisplay` and the four mixins in `com.quickskin.mod.mixin.nickname`,
-which NeoForge loads from its own `quickskin-nicknames.mixins.json`. The admin commands
+names. `common` owns `NicknameDisplay` and the four mixins in `com.onlineskins.mod.mixin.nickname`,
+which NeoForge loads from its own `onlineskins-nicknames.mixins.json`. The admin commands
 (`QuickSkinCommands`, networking) are registered by `CommonEvents`; `NicknamePool`
 (server-appearance) reads the names `random` hands out.
 

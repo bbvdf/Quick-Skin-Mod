@@ -16,7 +16,7 @@ transitive E2E impact; the scenario contract owns actions, captures, and their p
 Use a named topic branch from `master`. For a focused target build:
 
 ```bash
-./gradlew --no-daemon --no-parallel -PquickskinTarget=1.21.1 buildTargetLanes buildTargetE2EHarnesses
+./gradlew --no-daemon --no-parallel -PonlineskinsTarget=1.21.1 buildTargetLanes buildTargetE2EHarnesses
 ```
 
 For the complete matrix, use the serial coordinator:

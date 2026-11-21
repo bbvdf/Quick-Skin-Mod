@@ -46,7 +46,7 @@ and model until an admin takes it back, and the player sees it on themselves.
   pool, a skin another player shows, or one uploaded from the admin's own catalog), random pool
   skins (all different while the pool has enough), or the players' own Quick Skin skins swapped
   among them so that nobody keeps theirs (a single random cycle). The world's skin pool holds at
-  most 64 named skins; PNG files in `config/quickskin-skins/` (64x64 or an HD size) join it when
+  most 64 named skins; PNG files in `config/onlineskins-skins/` (64x64 or an HD size) join it when
   the server starts and on `skin pool reload`, named after the file, `_slim` or `_classic` choosing
   the model and the arms read otherwise.
 - **Who may.** Only permission level 2, checked on the server thread for every `skin_admin`
@@ -64,14 +64,14 @@ and model until an admin takes it back, and the player sees it on themselves.
   cache no longer holds when they return is taken back. The pool's skins are pinned under one
   holder, as many as the budget holds. A give or a pool addition the budget cannot hold is
   refused, and so is a 4097th player.
-- **Persistence.** The world's `quickskin/assigned-skins.json` keeps the assigned skins and the
+- **Persistence.** The world's `onlineskins/assigned-skins.json` keeps the assigned skins and the
   pool, read at start, saved atomically on the cache-I/O worker after each change and at stop,
   and never saved over when unreadable. A skin whose texture the cache does not hold is kept but
   neither shown nor handed out, so a cache that fails to load loses nothing. An assigned skin
   lasts until an admin takes it back, across reconnects and restarts; `skin reset` without
   players takes back everyone's, also of players who are not online.
-- **Commands and panel.** `/quickskin skin set|copy|random|shuffle|reset` and
-  `/quickskin skin pool list|add|remove|reload` for admins, with English fallbacks for the console
+- **Commands and panel.** `/onlineskins skin set|copy|random|shuffle|reset` and
+  `/onlineskins skin pool list|add|remove|reload` for admins, with English fallbacks for the console
   and clients without Quick Skin; the Player skins panel, opened from the Server tab of the
   settings, for admins on a server with `assigned-skins`. It is a server tool, so it sits beside
   the server's other settings rather than in the skin menu, whose button stays "Coming soon".

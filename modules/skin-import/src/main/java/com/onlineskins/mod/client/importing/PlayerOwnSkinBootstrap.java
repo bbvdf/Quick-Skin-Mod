@@ -1,0 +1,342 @@
+package com.onlineskins.mod.client.importing;
+
+import com.onlineskins.mod.client.services.LocalAssetManager;
+import com.onlineskins.mod.client.services.MojangApiService;
+import com.onlineskins.mod.common.data.AssetMetadata;
+import com.onlineskins.mod.platform.QuickSkinInfo;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.client.Minecraft;
+
+import java.awt.image.BufferedImage;
+
+/** Owns the local Mojang-skin import and its client-lifetime asynchronous work. */
+@Environment(EnvType.CLIENT)
+public final class PlayerOwnSkinBootstrap {
+    private static volatile boolean closed;
+    private static java.util.concurrent.CompletableFuture<?> playerOwnSkinTask;
+    private static volatile boolean playerOwnSkinBootstrapped;
+
+    private PlayerOwnSkinBootstrap() {
+    }
+
+    public static synchronized void initialize() {
+        closed = false;
+    }
+
+    /** Stops the import before the composition root closes its stores and services. */
+    public static synchronized void close() {
+        closed = true;
+        if (playerOwnSkinTask != null) {
+            playerOwnSkinTask.cancel(true);
+            playerOwnSkinTask = null;
+        }
+    }
+
+    /**
+     * Ensure player's own skin exists in the list
+     * Downloads it from Mojang if not present
+     * Can be called at any time (even before joining a world)
+     *
+     * <p>Idempotent and cheap to call repeatedly: it runs at most one bootstrap per client
+     * session. Client entry points do not agree on when the session user becomes readable -
+     * FML constructs mods before {@link Minecraft} exists, so the very first attempt has no
+     * user to look up - therefore the attempt stays pending instead of being consumed, and the
+     * client tick retries it as soon as the session is available.
+     */
+    public static void ensurePlayerOwnSkinExists() {
+        if (playerOwnSkinBootstrapped || closed) {
+            return;
+        }
+        startPlayerOwnSkinBootstrap();
+    }
+
+    private static synchronized void startPlayerOwnSkinBootstrap() {
+        if (playerOwnSkinBootstrapped || closed) {
+            return;
+        }
+
+        com.onlineskins.mod.config.ClientConfig config = com.onlineskins.mod.config.ClientConfig.getInstance();
+        if (!config.enablePlayerOwnSkinSystem) {
+            playerOwnSkinBootstrapped = true;
+            return;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.getUser() == null) {
+            // No session yet; leave the bootstrap pending for the next client tick.
+            return;
+        }
+
+        String playerName = minecraft.getUser().getName();
+        playerOwnSkinBootstrapped = true;
+
+        // The own skin belongs to the launcher account it was downloaded for. One that predates
+        // this record goes to the first account seen; another account downloads its own.
+        String account = com.onlineskins.mod.config.AccountSkinPreferences.key(
+                minecraft.getUser().getProfileId(), playerName);
+        if (account != null && !account.equals(config.playerOwnSkinAccount)) {
+            if (!config.playerOwnSkinAccount.isEmpty()) {
+                config.playerOwnSkinHash = "";
+                config.playerOwnSkinTexture = "";
+                config.playerOwnSkinHidden = false;
+            }
+            config.playerOwnSkinAccount = config.playerOwnSkinHash.isEmpty() ? "" : account;
+        }
+
+        // Download the account's skin on every start (async, won't block startup), even when an
+        // own skin is already listed: Mojang may serve another one by now, changed elsewhere or
+        // retouched by Mojang after an upload, and the own skin is the one other players see.
+        playerOwnSkinTask = com.onlineskins.mod.client.services.MojangApiService.getInstance()
+                .fetchSkinByUsername(playerName)
+                .thenAccept(skinData -> {
+                    if (!closed && minecraft != null) {
+                        // Compared here, off the client thread: Mojang serves an account without a
+                        // skin of its own one of Minecraft's default skins
+                        boolean defaultSkin = skinData != null && MinecraftDefaultSkins.matches(skinData.image);
+                        minecraft.execute(() -> {
+                            if (!closed && skinData != null) {
+                                handlePlayerOwnSkinFetched(skinData, account, null, defaultSkin);
+                            }
+                        });
+                    }
+                })
+                .exceptionally(throwable -> {
+                    Throwable cause = throwable instanceof java.util.concurrent.CompletionException
+                            && throwable.getCause() != null ? throwable.getCause() : throwable;
+                    if (!(cause instanceof java.util.concurrent.CancellationException)
+                            && MojangApiService.findFailure(throwable) == null) {
+                        QuickSkinInfo.LOGGER.warn("Could not download the local player's Mojang skin", throwable);
+                    }
+                    return null;
+                });
+    }
+
+    /**
+     * Whether the own skin the player deleted stays deleted when Mojang serves {@code textureUrl}:
+     * until the account's skin changes, and a default skin never takes its place. Should no other
+     * skin be listed (their files removed outside the game), it is listed again, so the list never
+     * runs empty.
+     */
+    static boolean staysDeleted(boolean deleted, boolean defaultSkin, String textureUrl,
+                                String deletedTexture, boolean otherSkinsListed) {
+        return deleted && otherSkinsListed && (defaultSkin || sameTexture(textureUrl, deletedTexture));
+    }
+
+    /**
+     * One texture address in one spelling: Mojang's texture host over HTTPS, as the start-up
+     * check stores it. The upload reply names the same texture over plain HTTP, and earlier
+     * versions stored that spelling. Any other address is kept as it is.
+     */
+    static String canonicalTextureUrl(String textureUrl) {
+        if (textureUrl == null || textureUrl.isEmpty() || textureUrl.length() > 512) {
+            return textureUrl != null ? textureUrl : "";
+        }
+        try {
+            java.net.URI uri = java.net.URI.create(textureUrl);
+            String scheme = uri.getScheme();
+            String path = uri.getRawPath();
+            if (("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+                    && "textures.minecraft.net".equalsIgnoreCase(uri.getHost())
+                    && uri.getRawUserInfo() == null && uri.getPort() == -1
+                    && uri.getRawQuery() == null && uri.getRawFragment() == null
+                    && path != null && path.startsWith("/texture/")) {
+                return "https://textures.minecraft.net" + path;
+            }
+        } catch (IllegalArgumentException malformed) {
+            // Not a URI: compared as it is
+        }
+        return textureUrl;
+    }
+
+    /** Whether two non-empty addresses name the same Mojang texture. */
+    static boolean sameTexture(String textureUrl, String other) {
+        String canonical = canonicalTextureUrl(textureUrl);
+        return !canonical.isEmpty() && canonical.equals(canonicalTextureUrl(other));
+    }
+
+    /**
+     * Handle the fetched player's own skin data
+     * Smart mode: checks if skin already exists before saving a duplicate
+     *
+     * <p>{@code defaultSkin} says Mojang served one of Minecraft's default skins, which it gives an
+     * account without a skin of its own: no skin the player chose, so it never takes the place
+     * of an own skin already listed. Without one, it is listed as the own skin as before.
+     */
+    private static void handlePlayerOwnSkinFetched(
+            com.onlineskins.mod.client.services.MojangApiService.MojangSkinData skinData, String account,
+            @org.jetbrains.annotations.Nullable String replacedSkin, boolean defaultSkin) {
+        try {
+            // The same Mojang texture as the listed own skin: nothing changed. Its stored copy
+            // may have been flattened by the transparency setting, so the texture's address is
+            // compared rather than a hash of the pixels.
+            com.onlineskins.mod.config.ClientConfig ownConfig = com.onlineskins.mod.config.ClientConfig.getInstance();
+            boolean wearsReplaced = replacedSkin != null && replacedSkin.equals(ownConfig.activeSkinHash);
+            if (!wearsReplaced && sameTexture(skinData.textureUrl, ownConfig.playerOwnSkinTexture)
+                    && LocalAssetManager.getInstance().getMetadata(ownConfig.playerOwnSkinHash) != null) {
+                return;
+            }
+            // The account has no skin of its own at Mojang right now: the own skin it had stays
+            if (defaultSkin && replacedSkin == null && !ownConfig.playerOwnSkinHash.isEmpty()
+                    && LocalAssetManager.getInstance().getMetadata(ownConfig.playerOwnSkinHash) != null) {
+                QuickSkinInfo.LOGGER.info("Mojang serves a default skin for '{}'; keeping the own skin already listed",
+                        skinData.username);
+                return;
+            }
+            if (replacedSkin == null && staysDeleted(ownConfig.playerOwnSkinHidden, defaultSkin,
+                    skinData.textureUrl, ownConfig.playerOwnSkinTexture,
+                    LocalAssetManager.getInstance().hasSkinsBesidesOwnSkin())) {
+                return;
+            }
+
+            // Process the image to get its final form before hashing and saving.
+            // This ensures the hash we check against is the same as the one that will be generated from the saved file.
+            BufferedImage image = skinData.image;
+
+            // Convert legacy 64x32 skins to modern 64x64 format
+            if (image.getHeight() == image.getWidth() / 2) {
+                image = com.onlineskins.mod.common.util.HDTextureProcessor.convertLegacyToModern(image);
+            }
+
+            // Apply transparency settings if needed
+            if (com.onlineskins.mod.config.ClientConfig.getInstance().shouldDisableSkinTransparency()) {
+                image = com.onlineskins.mod.common.util.HDTextureProcessor.removeTransparency(image);
+            }
+
+            // Convert the (potentially modified) image to a byte array to compute its definitive hash.
+            byte[] processedImageBytes = com.onlineskins.mod.common.util.HDTextureProcessor.imageToPng(image);
+            if (processedImageBytes == null) {
+                return;
+            }
+
+            String finalHash = com.onlineskins.mod.common.util.HashUtil.computeAssetContentId(
+                    processedImageBytes, "skin");
+            if (finalHash == null) {
+                return;
+            }
+
+            LocalAssetManager assetManager = LocalAssetManager.getInstance();
+            com.onlineskins.mod.config.ClientConfig config = com.onlineskins.mod.config.ClientConfig.getInstance();
+            String previousOwnSkin = config.playerOwnSkinHash;
+            if (!wearsReplaced && finalHash.equals(previousOwnSkin) && assetManager.getMetadata(finalHash) != null) {
+                // Mojang still serves the listed own skin; remember which texture it is
+                config.playerOwnSkinTexture = canonicalTextureUrl(skinData.textureUrl);
+                config.save();
+                return;
+            }
+            AssetMetadata existingMetadata = assetManager.getMetadata(finalHash);
+
+            if (existingMetadata == null) {
+                java.nio.file.Path saved = com.onlineskins.mod.client.gui.util.SkinImporter
+                        .saveSkinImage(image, skinData.username);
+                if (saved == null) return;
+
+                // Reload assets to recognize the new file.
+                assetManager.reload();
+                if (assetManager.getMetadata(finalHash) == null) {
+                    QuickSkinInfo.LOGGER.warn("Downloaded Mojang skin was saved with an unexpected content hash");
+                    return;
+                }
+            }
+
+            // Now that the skin is guaranteed to be in the asset manager, set its hash in the config.
+            // A previous own skin stays in the list as an ordinary skin, and a new own skin is
+            // listed even when the player had deleted the previous one, as is the deleted one
+            // listed again because no other skin is left.
+            if (!finalHash.equals(config.playerOwnSkinHash) || existingMetadata == null) {
+                config.playerOwnSkinHidden = false;
+            }
+            config.playerOwnSkinHash = finalHash;
+            config.playerOwnSkinTexture = canonicalTextureUrl(skinData.textureUrl);
+            config.playerOwnSkinAccount = account != null ? account : "";
+
+            // Whoever wore the previous own skin wears the new one: it is the same account skin
+            // as Mojang now serves it. So does whoever wore the skin just uploaded, which Mojang
+            // may have retouched.
+            boolean woreOwnSkin = config.activeCpmModelHash.isEmpty() && !config.activeSkinHash.equals(finalHash)
+                    && (config.activeSkinHash.equals(previousOwnSkin) || config.activeSkinHash.equals(replacedSkin))
+                    && !config.activeSkinHash.isEmpty();
+            String accountSelection = account != null ? config.accountSkins.skinHash(account) : "";
+            if (!accountSelection.isEmpty() && !accountSelection.equals(finalHash)
+                    && (accountSelection.equals(previousOwnSkin) || accountSelection.equals(replacedSkin))) {
+                config.accountSkins.select(account, finalHash);
+            }
+            if ((config.activeSkinHash.isEmpty() && config.activeCpmModelHash.isEmpty()) || woreOwnSkin) {
+                config.activeSkinHash = finalHash;
+
+                // Apply it to the player if they're in a world.
+                net.minecraft.client.player.LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
+                if (player != null) {
+                    AssetMetadata metadata = assetManager.getMetadata(finalHash);
+                    if (metadata != null) {
+                        String skinId = "local_skin:" + finalHash;
+                        String modelType = assetManager.getSkinModelPreference(finalHash);
+
+                        com.onlineskins.mod.client.services.PlayerAppearanceService.getInstance()
+                                .applySkin(player.getUUID(), skinId, modelType);
+                    }
+                }
+            }
+
+            config.save();
+
+        } catch (Exception e) {
+            QuickSkinInfo.LOGGER.error("Could not import the local player's Mojang skin", e);
+        }
+    }
+
+    /**
+     * After a skin is uploaded to Mojang, downloads the texture Mojang kept for it and makes it
+     * the own skin, as the start-up check would on the next launch. Mojang may retouch an
+     * upload, so this is the skin other players see; whoever wore the uploaded skin wears it.
+     * Runs from the upload's worker thread.
+     */
+    public static void adoptUploadedSkin(String textureUrl, String model, @org.jetbrains.annotations.Nullable AssetMetadata uploaded) {
+        if (closed || !com.onlineskins.mod.config.ClientConfig.getInstance().enablePlayerOwnSkinSystem) {
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.getUser() == null) {
+            return;
+        }
+        String playerName = minecraft.getUser().getName();
+        java.util.UUID profileId = minecraft.getUser().getProfileId();
+        String account = com.onlineskins.mod.config.AccountSkinPreferences.key(profileId, playerName);
+        String uploadedHash = uploaded != null ? uploaded.hash() : null;
+        // Mojang's reply names the texture over plain HTTP; the start-up check compares the HTTPS
+        // address it stores, so a deleted upload must not come back at the next start.
+        String texture = canonicalTextureUrl(textureUrl);
+        MojangApiService.getInstance().downloadSkinImage(texture)
+                .thenAccept(image -> minecraft.execute(() -> {
+                    if (!closed && image != null) {
+                        handlePlayerOwnSkinFetched(new MojangApiService.MojangSkinData(
+                                playerName, profileId, image, model, texture), account, uploadedHash, false);
+                    }
+                }))
+                .exceptionally(throwable -> {
+                    QuickSkinInfo.LOGGER.warn("Could not download the skin Mojang kept after the upload: {}",
+                            throwable.toString());
+                    return null;
+                });
+    }
+
+    /**
+     * Auto-select player's own skin if no skin is currently selected
+     * Called during initialization to ensure base skin is always selected
+     */
+    public static void autoSelectPlayerOwnSkin() {
+        com.onlineskins.mod.config.ClientConfig config = com.onlineskins.mod.config.ClientConfig.getInstance();
+
+        if (config.activeSkinHash.isEmpty() && config.activeCpmModelHash.isEmpty() && !config.playerOwnSkinHash.isEmpty()) {
+            LocalAssetManager assetManager = LocalAssetManager.getInstance();
+            AssetMetadata metadata = assetManager.getMetadata(config.playerOwnSkinHash);
+
+            if (metadata != null) {
+                // Auto-select the player's own skin
+                config.activeSkinHash = config.playerOwnSkinHash;
+                config.save();
+            }
+        }
+    }
+
+}

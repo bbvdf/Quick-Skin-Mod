@@ -1,0 +1,24 @@
+{
+  "required": true,
+  "package": "com.onlineskins.mod.neoforge.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "priority": 2000,
+  "client": [
+    "PlayerInfoMixin",
+    "MixinAbstractClientPlayer",
+    "CapeLayerMixin",
+    "PlayerRendererMixin",
+    "SkinManagerMixin",
+    "PreviewEquipmentMixin",
+    "PreviewSkinSwapPoseMixin"
+  ],
+  "mixins": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrite": {
+    "conformVisibility": true
+  }
+}

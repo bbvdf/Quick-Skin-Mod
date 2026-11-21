@@ -8,7 +8,7 @@ import org.gradle.api.tasks.bundling.Jar
 // package. Quick Skin calls it directly, so its ImageIO service registrations, Maven metadata and
 // unused top-level resources stay out of the JAR and nothing is registered globally.
 // `scripts/release/verify_release.py` rejects a production JAR that holds anything else.
-val relocations = mapOf("com.twelvemonkeys" to "com.quickskin.mod.shadow.twelvemonkeys")
+val relocations = mapOf("com.twelvemonkeys" to "com.onlineskins.mod.shadow.twelvemonkeys")
 
 tasks.named<Jar>("shadowJar") {
     relocations.forEach { (library, relocated) -> withGroovyBuilder { "relocate"(library, relocated) } }

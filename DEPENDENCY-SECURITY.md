@@ -30,7 +30,7 @@ checksum change, never by relaxing the mode: see
   Gradle refuse any dynamic or changing selector in that classpath, so a new Fabric Loader release
   cannot break strict verification. The build declares no dynamic versions anywhere else either.
 - `gradle/maven-mirror.gradle.kts` puts The Plum Team's
-  [Maven mirror](https://github.com/The-Plum-Team/maven-mirror), at `https://maven.quickskin.net/`,
+  [Maven mirror](https://github.com/The-Plum-Team/maven-mirror), at `https://maven.onlineskins.net/`,
   first in every project that applies the policy or the Java module conventions, and
   `settings.gradle.kts` does the same for plugins. It is asked for everything but what it never
   holds (Mojang's and Minecraft's files and the namespaces Loom generates): the Fabric,
@@ -62,7 +62,7 @@ checksum change, never by relaxing the mode: see
   the game stops at startup when two modules export the same package, so a library kept under its
   upstream package collides with every other mod that ships it, whether merged or nested as its
   own module. `gradle/bundled-library-conventions.gradle.kts` relocates every `shadowBundle`
-  library below `com.quickskin.mod.shadow`, leaves out its global ImageIO service registrations
+  library below `com.onlineskins.mod.shadow`, leaves out its global ImageIO service registrations
   and Maven metadata, and adds its license from `licenses/` under `META-INF/licenses/`. A bundled
   library must therefore be pure Java: a JNI binding cannot be relocated, because its native
   symbols name the original classes. `scripts/release/verify_release.py` rejects a production JAR
@@ -178,7 +178,7 @@ all resolved (`<minecraft>` is a matrix `artifact_version`):
 
 ```bash
 ./gradlew --no-daemon --no-parallel \
-  --write-verification-metadata sha256 -PquickskinTarget=<minecraft> \
+  --write-verification-metadata sha256 -PonlineskinsTarget=<minecraft> \
   clean buildTargetLanes buildTargetE2EHarnesses
 ```
 

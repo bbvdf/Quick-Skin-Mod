@@ -1,0 +1,730 @@
+package com.onlineskins.mod.client.gui.integration;
+
+import com.onlineskins.mod.client.gui.util.DebugOffsetManager;
+import com.onlineskins.mod.client.gui.widget.PlayerWidget;
+import com.onlineskins.mod.client.services.LocalAssetManager;
+import com.onlineskins.mod.client.services.PreviewAnimationState;
+import com.onlineskins.mod.common.data.AssetMetadata;
+import dev.architectury.event.events.client.ClientGuiEvent;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.chat.Component;
+//? if <1.21.11 {
+import net.minecraft.resources.ResourceLocation;
+//?} else {
+import net.minecraft.resources.Identifier;
+//?}
+
+/** Owns Quick Skin's controls and preview injected into vanilla title and pause menus. */
+@Environment(EnvType.CLIENT)
+public final class MenuIntegration {
+    private static boolean initialized;
+    private static PlayerWidget playerWidget;
+
+    // Preserve rotation across screen rebuilds, including world exit.
+    private static float titleScreenBodyYaw = 20.0f;
+    private static float titleScreenTargetRotation = 20.0f;
+    private static Button animationToggleButton;
+    private static final java.util.List<Button> animationButtons = new java.util.ArrayList<>();
+    private static boolean isAnimationDropdownOpen = false;
+    // The rotate control of the current preview, and whether the preview's controls are shown.
+    private static Button rotateButton;
+    private static boolean previewControlsShown = true;
+
+    private MenuIntegration() {
+    }
+
+    public static synchronized void init(java.util.function.Consumer<Screen> openSkinMenu) {
+        java.util.Objects.requireNonNull(openSkinMenu, "openSkinMenu");
+        if (initialized) return;
+        initialized = true;
+
+        // Screen init (after screen is initialized, before render)
+        ClientGuiEvent.INIT_POST.register((client, screenAccess) -> {
+            Screen screen = screenAccess.getScreen();
+
+            // Determine screen type for all menu screens
+            String screenType = determineScreenType(screen);
+            if (screenType == null) {
+                return; // Not a screen we care about
+            }
+
+            // Check for Essential mod compatibility
+            boolean essentialPresent = com.onlineskins.mod.client.compat.EssentialCompatIntegration.isAvailable();
+
+            // Ensure Essential's player model uses QuickSkin's skin/cape
+            if (essentialPresent) {
+                com.onlineskins.mod.client.compat.EssentialCompatIntegration.registerMenuAppearance();
+            }
+
+            // Inject QuickSkin button
+            int buttonX = 0;
+            int buttonY = 0;
+            int buttonWidth = 98;
+            int buttonHeight = 20;
+            int spacing = 4;
+
+            if (screen instanceof TitleScreen titleScreen) {
+                boolean positioned = false;
+
+                // If Essential is present, position beside its right-hand action rail
+                if (essentialPresent) {
+                    net.minecraft.client.gui.components.events.GuiEventListener bottomWidget =
+                            com.onlineskins.mod.client.compat.EssentialCompatIntegration.findBottomEssentialWidget(screen);
+                    if (bottomWidget instanceof net.minecraft.client.gui.components.AbstractWidget essentialWidget) {
+                        buttonWidth = 20;
+                        buttonHeight = 20;
+                        buttonX = essentialWidget.getX() - buttonWidth - spacing;
+                        buttonY = essentialWidget.getY();
+                        positioned = true;
+                    }
+                }
+
+                if (!positioned) {
+                    // Anchor to the Quit Game button so the whole Quick Skin cluster follows its
+                    // row wherever the loader put it (NeoForge moves it below its Mods button).
+                    Button quitGameButton = null;
+                    java.util.List<TitleMenuRow.Box> widgets = new java.util.ArrayList<>();
+                    for (net.minecraft.client.gui.components.events.GuiEventListener listener : screen.children()) {
+                        if (listener instanceof AbstractWidget widget) {
+                            widgets.add(new TitleMenuRow.Box(
+                                    widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight()));
+                        }
+                        if (quitGameButton == null && listener instanceof Button button &&
+                                button.getMessage().getContents() instanceof
+                                        net.minecraft.network.chat.contents.TranslatableContents contents &&
+                                "menu.quit".equals(contents.getKey())) {
+                            quitGameButton = button;
+                        }
+                    }
+
+                    if (quitGameButton != null) {
+                        TitleMenuRow.Box quit = new TitleMenuRow.Box(
+                                quitGameButton.getX(), quitGameButton.getY(),
+                                quitGameButton.getWidth(), quitGameButton.getHeight());
+                        buttonX = TitleMenuRow.buttonX(quit, widgets, spacing);
+                        buttonY = quitGameButton.getY();
+                    } else {
+                        // Match the right-hand side of the vanilla Options/Quit Game row.
+                        //? if >=26.2 {
+                        buttonX = titleScreen.width / 2 + 104;
+                        buttonY = titleScreen.height / 4 + 48 + 96;
+                        //?} else {
+                        buttonX = titleScreen.width / 2 + 128;
+                        buttonY = titleScreen.height / 4 + 48 + 84;
+                        //?}
+                    }
+                }
+
+            } else if (screen instanceof PauseScreen pauseScreen) {
+                boolean positioned = false;
+
+                // If Essential is present, position beside its right-hand action rail
+                if (essentialPresent) {
+                    net.minecraft.client.gui.components.events.GuiEventListener bottomWidget =
+                            com.onlineskins.mod.client.compat.EssentialCompatIntegration.findBottomEssentialWidget(screen);
+                    if (bottomWidget instanceof net.minecraft.client.gui.components.AbstractWidget essentialWidget) {
+                        buttonWidth = 20;
+                        buttonHeight = 20;
+                        buttonX = essentialWidget.getX() - buttonWidth - spacing;
+                        buttonY = essentialWidget.getY();
+                        positioned = true;
+                    }
+                }
+
+                if (!positioned) {
+                    // Position next to "Save and Quit to Title" button
+                    Button saveAndQuitButton = null;
+                    int maxWidth = 0;
+
+                    // Find the widest button (vanilla buttons)
+                    for (net.minecraft.client.gui.components.events.GuiEventListener listener : screen.children()) {
+                        if (listener instanceof Button button && button.getWidth() > maxWidth) {
+                            maxWidth = button.getWidth();
+                        }
+                    }
+
+                    // Find the bottom-most button with that max width (Save and Quit to Title)
+                    if (maxWidth > 0) {
+                        int maxY = -1;
+                        for (net.minecraft.client.gui.components.events.GuiEventListener listener : screen.children()) {
+                            if (listener instanceof Button button && button.getWidth() == maxWidth && button.getY() > maxY) {
+                                maxY = button.getY();
+                                saveAndQuitButton = button;
+                            }
+                        }
+                    }
+
+                    if (saveAndQuitButton != null) {
+                        // Position directly next to the vanilla quit button
+                        buttonX = saveAndQuitButton.getX() + saveAndQuitButton.getWidth() + spacing;
+                        buttonY = saveAndQuitButton.getY();
+                    } else {
+                        // Fallback position if we can't find the button
+                        buttonX = pauseScreen.width - buttonWidth - spacing;
+                        buttonY = spacing;
+                    }
+                }
+            } else {
+                // For other screens (world selection, etc.), use similar logic to PauseScreen
+                Button referenceButton = findLargestButton(screen);
+                if (referenceButton != null) {
+                    int targetY = referenceButton.getY();
+                    int rightmostX = referenceButton.getX() + referenceButton.getWidth();
+
+                    for (net.minecraft.client.gui.components.events.GuiEventListener listener : screen.children()) {
+                        if (listener instanceof AbstractWidget widget && widget.getY() == targetY) {
+                            rightmostX = Math.max(rightmostX, widget.getX() + widget.getWidth());
+                        }
+                    }
+
+                    buttonX = rightmostX + spacing;
+                    buttonY = targetY;
+                } else {
+                    // Fallback
+                    buttonX = screen.width - buttonWidth - spacing;
+                    buttonY = screen.height - buttonHeight - spacing;
+                }
+            }
+
+            // Create and add the "Change Skin" button
+            final Button changeSkinButton;
+            boolean compactButton = !essentialPresent
+                    && com.onlineskins.mod.config.ClientConfig.getInstance().compactChangeSkinButton;
+            if (essentialPresent || compactButton) {
+                // An icon the size of vanilla's language and accessibility buttons, beside Essential's
+                // rail or, when chosen in settings, at the start of the full button's slot. A compact
+                // button stacks the preview's controls above it and moves the preview beside them.
+                changeSkinButton = new com.onlineskins.mod.client.gui.widget.IconActionButton(
+                        buttonX, buttonY, buttonHeight, buttonHeight,
+                        //? if <1.21.11 {
+                            //? if <1.21 {
+                        new ResourceLocation("onlineskins", "textures/gui/onlineskins_icon.png"),
+                            //?} else {
+                        ResourceLocation.fromNamespaceAndPath("onlineskins", "textures/gui/onlineskins_icon.png"),
+                            //?}
+                        //?} else {
+                        Identifier.fromNamespaceAndPath("onlineskins", "textures/gui/onlineskins_icon.png"),
+                        //?}
+                        button -> openSkinMenu.accept(screen),
+                        Component.translatable("onlineskins.button.change_skin")
+                );
+            } else {
+                changeSkinButton = Button.builder(
+                        Component.translatable("onlineskins.button.change_skin"),
+                        button -> openSkinMenu.accept(screen)
+                ).bounds(buttonX, buttonY, buttonWidth, buttonHeight).build();
+            }
+
+            FancyMenuWidgets.setIdentifier(changeSkinButton, FancyMenuWidgets.CHANGE_SKIN_ID);
+            screenAccess.addRenderableWidget(changeSkinButton);
+
+            // Skip PlayerWidget, rotate button, and animation buttons when Essential is present
+            // (Essential has its own player model rendering) or the preview is hidden in settings
+            if (!essentialPresent && previewEnabled(screenType)) {
+                // Create and add the PlayerWidget above the button using debug offsets
+                int widgetSize = 144;
+                int offsetX = DebugOffsetManager.getOffsetX(screenType);
+                int offsetY = DebugOffsetManager.getOffsetY(screenType);
+
+                int widgetX = buttonX + offsetX;
+                int widgetY = buttonY + offsetY;
+                if (compactButton) {
+                    // Stand the model on the icon's row, centred in the slot right of the control column
+                    int column = buttonHeight + spacing;
+                    widgetX += column / 2;
+                    widgetY += column;
+                }
+
+                // Get player skin and model type from saved config or player
+                //? if <1.21.11 {
+                ResourceLocation skinLocation = null;
+                //?} else {
+                Identifier skinLocation = null;
+                //?}
+                String modelType = "classic";
+                LocalPlayer player = Minecraft.getInstance().player;
+
+                com.onlineskins.mod.config.ClientConfig config = com.onlineskins.mod.config.ClientConfig.getInstance();
+                // The saved skin, unless a CPM model is the latest look choice: then the player's
+                // own skin (the live one in a world, the imported one on the title screen).
+                String previewSkinHash = com.onlineskins.mod.client.rendering.LocalLookPreview.skinHash(player != null);
+
+                // First priority: Use that skin from the catalog (works on title screen when player is null)
+                if (!previewSkinHash.isEmpty()) {
+                    com.onlineskins.mod.client.services.LocalAssetManager assetManager =
+                            com.onlineskins.mod.client.services.LocalAssetManager.getInstance();
+                    com.onlineskins.mod.common.data.AssetMetadata metadata = assetManager.getMetadata(previewSkinHash);
+
+                    if (metadata != null) {
+                        // Load the saved skin texture
+                        skinLocation = assetManager.getTextureLocation(previewSkinHash, com.onlineskins.mod.common.data.TextureQuality.FULL);
+
+                        // Get saved model type preference for this skin
+                        modelType = assetManager.getSkinModelPreference(previewSkinHash);
+
+                        // If auto mode, use the detected model type from metadata
+                        if ("auto".equals(modelType)) {
+                            modelType = metadata.skinModel();
+                        }
+                    }
+                }
+
+                // Second priority: Use current player skin (when in-game)
+                if (skinLocation == null && player != null) {
+                    //? if <1.21.9 {
+                        //? if <1.21 {
+                    skinLocation = player.getSkinTextureLocation();
+                        //?} else {
+                    skinLocation = player.getSkin().texture();
+                        //?}
+                    //?} else {
+                    skinLocation = player.getSkin().body().texturePath();
+                    //?}
+
+                    // Get model type from the active skin if available
+                    if (!previewSkinHash.isEmpty()) {
+                        LocalAssetManager assetManager = LocalAssetManager.getInstance();
+                        modelType = assetManager.getSkinModelPreference(previewSkinHash);
+                        AssetMetadata metadata = assetManager.getMetadata(previewSkinHash);
+
+                        // If auto mode, detect from the active custom skin (if any)
+                        if ("auto".equals(modelType) && metadata != null) {
+                            // Use the detected model type from the custom skin metadata
+                            modelType = metadata.skinModel();
+                        } else {
+                            // Fallback: detect from the vanilla player's model
+                            //? if <1.21.9 {
+                                //? if <1.21 {
+                            modelType = player.getModelName(); // "default" or "slim"
+                                //?} else {
+                            modelType = player.getSkin().model().id(); // "default" or "slim"
+                                //?}
+                            if ("default".equals(modelType)) {
+                                modelType = "classic";
+                            }
+                            //?} else {
+                            modelType = player.getSkin().model() == net.minecraft.world.entity.player.PlayerModelType.SLIM ? "slim" : "classic";
+                            //?}
+                        }
+                    } else {
+                        // No custom skin active, use the player's own model
+                        //? if <1.21.9 {
+                            //? if <1.21 {
+                        modelType = player.getModelName(); // "default" or "slim"
+                            //?} else {
+                        modelType = player.getSkin().model().id(); // "default" or "slim"
+                            //?}
+                        if ("default".equals(modelType)) {
+                            modelType = "classic";
+                        }
+                        //?} else {
+                        modelType = player.getSkin().model() == net.minecraft.world.entity.player.PlayerModelType.SLIM ? "slim" : "classic";
+                        //?}
+                    }
+                }
+
+                // Fallback: Use default Steve skin
+                if (skinLocation == null) {
+                    //? if <1.21.11 {
+                        //? if <1.21 {
+                    skinLocation = new ResourceLocation("minecraft", "textures/entity/player/wide/steve.png");
+                        //?} else {
+                    skinLocation = ResourceLocation.fromNamespaceAndPath("minecraft", "textures/entity/player/wide/steve.png");
+                        //?}
+                    //?} else {
+                    skinLocation = Identifier.fromNamespaceAndPath("minecraft", "textures/entity/player/wide/steve.png");
+                    //?}
+                    modelType = "classic";
+                }
+
+                // Load saved cape from config
+                String capeId = config.activeCapeHash;
+                //? if <1.21.11 {
+                ResourceLocation capeLocation = null;
+                //?} else {
+                Identifier capeLocation = null;
+                //?}
+                if (capeId != null && !capeId.isEmpty()) {
+                    // Use the service to resolve the location. This will also trigger animation registration.
+                    // The UUID is not used for local/known capes, so we can pass null.
+                    capeLocation = com.onlineskins.mod.client.services.CapeService.getInstance().getCapeLocation(null, capeId);
+                }
+
+                // Save rotation and animation state from existing widget before creating new one
+                if (playerWidget != null) {
+                    titleScreenBodyYaw = playerWidget.getBodyYaw();
+                    titleScreenTargetRotation = playerWidget.getTargetYRotation();
+                    String currentAnimation = playerWidget.getAnimation();
+                    if (currentAnimation != null && !currentAnimation.isEmpty()) {
+                        PreviewAnimationState.set(currentAnimation);
+                    }
+                }
+
+                playerWidget = new PlayerWidget(widgetX, widgetY, widgetSize, widgetSize, skinLocation, capeLocation, capeId, modelType);
+                // While a CPM model is the look and no world is loaded, CPM draws that model on
+                // the preview's own model; the skin above stays the fallback
+                playerWidget.setCpmModel(
+                        com.onlineskins.mod.client.rendering.LocalLookPreview.cpmModelFile(player != null), false);
+                // Set context based on screen type
+                if ("title".equals(screenType)) {
+                    playerWidget.setContext(com.onlineskins.mod.client.gui.widget.PlayerWidget.WidgetContext.TITLE_SCREEN);
+                    // No world, so no live player: the preview poses its own model, as the skin menu
+                    // does, with the moves between poses, never the player cached from a world left
+                    playerWidget.setOwnPose(true);
+                    keepDefaultPreviewClearOfSplash(playerWidget, screen.width);
+                } else if ("pause".equals(screenType)) {
+                    playerWidget.setContext(com.onlineskins.mod.client.gui.widget.PlayerWidget.WidgetContext.PAUSE_MENU);
+                    // Pose our own model, as the title screen does, so the pause preview breathes and
+                    // takes a picked pose. What the player wears and holds still comes from the
+                    // player: the preview's equipment pass draws the live armour and held item.
+                    playerWidget.setOwnPose(true);
+                }
+                // With FancyMenu, report the model box so its layout editor can select, hide, move
+                // and resize the preview under a stable identifier. Without it nothing changes.
+                if (FancyMenuWidgets.isPresent()) {
+                    playerWidget.reportModelBoundsForLayout(screen);
+                    FancyMenuWidgets.setIdentifier(playerWidget, FancyMenuWidgets.PREVIEW_ID);
+                }
+                screenAccess.addRenderableWidget(playerWidget);
+
+                // Restore saved rotation and animation state
+                playerWidget.setRotationState(titleScreenBodyYaw, titleScreenTargetRotation);
+                String savedAnimation = PreviewAnimationState.get();
+                if (savedAnimation != null && !savedAnimation.isEmpty()) {
+                    playerWidget.setAnimation(savedAnimation);
+                }
+
+                // Create and add rotate button (above Change Skin button, aligned to the left edge)
+                int rotateButtonSize = 20;
+                int rotateButtonX = buttonX;
+                int rotateButtonY = buttonY - rotateButtonSize - spacing;
+
+                com.onlineskins.mod.client.gui.widget.RotateButton newRotateButton =
+                        new com.onlineskins.mod.client.gui.widget.RotateButton(
+                                rotateButtonX,
+                                rotateButtonY,
+                                rotateButtonSize,
+                                button -> playerWidget.toggleRotation()
+                        );
+                FancyMenuWidgets.setIdentifier(newRotateButton, FancyMenuWidgets.ROTATE_ID);
+                screenAccess.addRenderableWidget(newRotateButton);
+                rotateButton = newRotateButton;
+
+                //? if <1.21 {
+                playerWidget.clearPriorityWidgets(); // Clear old priorities
+                playerWidget.addPriorityWidget(changeSkinButton); // Change Skin button
+                playerWidget.addPriorityWidget(newRotateButton); // Rotate button
+                //?}
+                // Clear animation buttons from previous screen
+                animationToggleButton = null;
+                animationButtons.clear();
+                isAnimationDropdownOpen = false;
+
+                // Animation buttons on the title screen and in the pause menu, so a pose picked in
+                // one carries over to the other
+                if ("title".equals(screenType) || "pause".equals(screenType)) {
+                    // Create animation toggle button (right of rotate button, or above it beside a compact button)
+                    int animToggleWidth = 20;
+                    // Same place on both screens: the right end of the Change Skin button, or above
+                    // the rotate button when that button is compact.
+                    int animToggleX = compactButton ? rotateButtonX : buttonX + buttonWidth - animToggleWidth;
+                    int animToggleY = compactButton ? rotateButtonY - rotateButtonSize - spacing : rotateButtonY;
+
+                    animationToggleButton = Button.builder(
+                            Component.literal(">"),
+                            button -> toggleAnimationDropdown()
+                    ).bounds(animToggleX, animToggleY, animToggleWidth, rotateButtonSize).build();
+                    FancyMenuWidgets.setIdentifier(animationToggleButton, FancyMenuWidgets.ANIMATION_TOGGLE_ID);
+                    screenAccess.addRenderableWidget(animationToggleButton);
+                    //? if <1.21 {
+                    playerWidget.addPriorityWidget(animationToggleButton);
+                    //?}
+
+                    // Create numbered animation buttons (dropdown)
+                    java.util.List<String> availableAnimations = getAvailableAnimations();
+                    for (int i = 0; i < availableAnimations.size(); i++) {
+                        final String animName = availableAnimations.get(i);
+                        final int index = i;
+
+                        Button animButton = Button.builder(
+                                Component.literal(String.valueOf(index + 1)),
+                                button -> {
+                                    // A pick, with the move that leads into it (the jump onto the block for Sitting)
+                                    if (playerWidget != null) {
+                                        playerWidget.pickAnimation(animName);
+                                        // Save animation state for persistence across all screens
+                                        PreviewAnimationState.set(animName);
+                                    }
+                                    toggleAnimationDropdown();
+                                }
+                        ).bounds(animToggleX, animToggleY - (i + 1) * 22, animToggleWidth, rotateButtonSize).build();
+
+                        animButton.visible = false;
+                        animButton.active = false;
+                        FancyMenuWidgets.setIdentifier(animButton, FancyMenuWidgets.animationButtonId(animName));
+                        animationButtons.add(animButton);
+                        screenAccess.addRenderableWidget(animButton);
+                        //? if <1.21 {
+                        playerWidget.addPriorityWidget(animButton);
+                        //?}
+                    }
+                }
+
+                // A fresh screen starts with the preview and its controls shown.
+                applyPreviewControlVisibility(true);
+            } else {
+                // Essential is present or the preview is hidden - drop our player widget and controls
+                playerWidget = null;
+                rotateButton = null;
+                animationToggleButton = null;
+                animationButtons.clear();
+                isAnimationDropdownOpen = false;
+                previewControlsShown = true;
+            }
+        });
+
+        /*
+         * First rendered frame of a screen, and every frame after it.
+         *
+         * The preview's real layout size is published here rather than in INIT_POST: mods that move
+         * their buttons away from overlapping widgets (In-Game Account Switcher) measure only while
+         * the screen is initialised, which is over by now, while FancyMenu's layout editor and its
+         * per-frame size mirror read the size after this point. publishLayoutBounds() does nothing
+         * unless FancyMenu is present.
+         *
+         * The rotate and animation controls belong to the preview: they are hidden while the preview
+         * is hidden (by a FancyMenu layout or by visible = false) and come back with it. The update
+         * runs only when that state changes, so other code that sets these buttons is not overridden
+         * every frame; with a visible preview and no FancyMenu it never runs. It is not limited to
+         * the preview's own screen because FancyMenu's layout editor, a screen of its own, edits
+         * this same widget.
+         */
+        ClientGuiEvent.RENDER_PRE.register((screen, graphics, mouseX, mouseY, delta) -> {
+            PlayerWidget widget = playerWidget;
+            if (widget != null) {
+                widget.publishLayoutBounds();
+                boolean shown = widget.visible && !FancyMenuWidgets.isHidden(widget);
+                if (shown != previewControlsShown) {
+                    applyPreviewControlVisibility(shown);
+                }
+            }
+            return dev.architectury.event.EventResult.pass();
+        });
+
+        /*
+         * Post-screen overlay pass for the preview injected into a vanilla screen.
+         *
+         * Registered only on the painter's-order pipeline. Before 1.21.6 the GUI is immediate mode
+         * over a depth buffer, the preview is drawn at GUI z = +50 and depth-rejects whatever the
+         * host screen paints afterwards, so there is nothing to defer and no listener to add.
+         *
+         * From 1.21.6 vanilla records the GUI into a GuiRenderState and composites it as a
+         * painter's algorithm with every pipeline built NO_DEPTH_TEST. The depth that used to keep
+         * the 3D preview in front is gone, and the last intersecting submission wins instead.
+         * TitleScreen.render calls super.render(...) - which is where an injected renderable widget
+         * draws - and only then paints the logo, the splash and the version string, so the splash
+         * lands in a node above the model. Re-submitting the model once the host screen has
+         * finished restores the order the depth buffer used to give for free.
+         *
+         * nextStratum() is vanilla's own mechanism for this and the only public layering API:
+         * Screen.renderWithTooltipAndSubtitles brackets its phases with it, and DebugScreenOverlay
+         * uses it for the one vanilla case of a picture-in-picture element that must beat text (the
+         * profiler pie chart over the F3 lines). It appends one node to a list walked in index
+         * order - O(1), no flush, no GPU work - and unlike relying on the intersection rule alone it
+         * cannot be defeated by the encompassing-bounds fast path in
+         * GuiRenderState.findAppropriateNode, nor by glyphs being emitted after elements when both
+         * land in one node.
+         *
+         * The pass is driven by the widget's own per-frame handoff rather than by matching the
+         * screen: submitDeferredPreview only draws when the widget actually rendered this frame, so
+         * a hidden preview stays hidden and a preview drawn through a modal's inline parent render
+         * still gets composited. The stratum is opened only when there is something to put in it.
+         */
+        //? if <1.21.6 {
+        //?} else {
+        ClientGuiEvent.RENDER_POST.register((screen, graphics, mouseX, mouseY, delta) -> {
+            PlayerWidget widget = playerWidget;
+            if (widget != null && widget.hasDeferredPreview()) {
+                graphics.nextStratum();
+                widget.submitDeferredPreview(graphics);
+            }
+            com.onlineskins.mod.client.compat.CPMCompatIntegration.onRenderedFrameBoundary();
+        });
+        //?}
+    }
+
+    public static void resetSessionState() {
+        playerWidget = null;
+        PreviewAnimationState.set("idle");
+        rotateButton = null;
+        animationToggleButton = null;
+        animationButtons.clear();
+        isAnimationDropdownOpen = false;
+        previewControlsShown = true;
+    }
+
+    /**
+     * Show or hide the preview's own controls together with the preview.
+     *
+     * <p>The rotate button, the animation toggle and the numbered animation buttons are hidden and
+     * disabled while the preview is hidden, and restored when it is shown; the numbered buttons
+     * come back only if their dropdown is open. The Change Skin button is never touched. The
+     * preview itself is deactivated while hidden, so it takes no clicks or scrolls.
+     */
+    private static void applyPreviewControlVisibility(boolean shown) {
+        previewControlsShown = shown;
+        if (playerWidget != null) {
+            playerWidget.active = shown;
+        }
+        setShown(rotateButton, shown);
+        setShown(animationToggleButton, shown);
+        for (Button button : animationButtons) {
+            setShown(button, shown && isAnimationDropdownOpen);
+        }
+    }
+
+    private static void setShown(AbstractWidget widget, boolean shown) {
+        if (widget != null) {
+            widget.visible = shown;
+            widget.active = shown;
+        }
+    }
+
+    /**
+     * Shrinks the title preview, as far as needed, so that at its default size and place it stays
+     * below the logo and the splash text whatever the window and GUI scale. A size or position the
+     * player chose is theirs: once either is set, the preview draws exactly as configured, over the
+     * splash if that is where they put it.
+     */
+    private static void keepDefaultPreviewClearOfSplash(PlayerWidget playerWidget, int screenWidth) {
+        com.onlineskins.mod.config.ClientConfig config = com.onlineskins.mod.config.ClientConfig.getInstance();
+        if (config.sizeModelPreviewPercentageTitleScreen != 0
+                || config.positionOffsetXTitleScreen != 0
+                || config.positionOffsetYTitleScreen != 0) {
+            return;
+        }
+        //? if >=1.21 {
+        boolean splashShown = !Minecraft.getInstance().options.hideSplashTexts().get();
+        //?} else {
+        boolean splashShown = true;
+        //?}
+        float preferred = playerWidget.getEffectiveScale();
+        // 20 is the smallest size the preview can be configured to.
+        float scale = TitleSplashClearance.clearScale(screenWidth, playerWidget.getLayoutCenterX(),
+                playerWidget.getLayoutFeetY(), preferred, Math.min(preferred, 20.0f), splashShown);
+        if (scale < preferred) {
+            playerWidget.setScaleCap(scale);
+        }
+    }
+
+    /**
+     * Whether the user keeps the preview visible on this screen ("title" or "pause")
+     */
+    private static boolean previewEnabled(String screenType) {
+        com.onlineskins.mod.config.ClientConfig config = com.onlineskins.mod.config.ClientConfig.getInstance();
+        return "pause".equals(screenType) ? config.showPauseMenuPreview : config.showTitleScreenPreview;
+    }
+
+    /**
+     * Determine screen type for the player widget
+     * Returns: "title" or "pause", or null if not a supported screen
+     * ONLY adds widgets to Title Screen and Pause Screen
+     */
+    private static String determineScreenType(Screen screen) {
+        if (screen instanceof TitleScreen) {
+            return "title";
+        } else if (screen instanceof PauseScreen pauseScreen) {
+            // F3+Esc pauses with no menu at all: nothing of Quick Skin's belongs on it either
+            return showsPauseMenu(pauseScreen) ? "pause" : null;
+        }
+
+        // Don't add widgets to any other screens (skin menu, world selection, etc.)
+        return null;
+    }
+
+    /**
+     * Whether this pause screen shows its menu, rather than being the menu-less screen F3+Esc
+     * opens. Before 1.21 the flag has no accessor, but the menu-less screen has no buttons.
+     */
+    private static boolean showsPauseMenu(PauseScreen pauseScreen) {
+        //? if <1.21 {
+        for (net.minecraft.client.gui.components.events.GuiEventListener listener : pauseScreen.children()) {
+            if (listener instanceof Button) {
+                return true;
+            }
+        }
+        return false;
+        //?} else {
+        return pauseScreen.showsPauseMenu();
+        //?}
+    }
+
+    /**
+     * Find the largest button on a screen (used for positioning reference)
+     */
+    private static Button findLargestButton(Screen screen) {
+        Button largest = null;
+        int maxWidth = 0;
+        int maxY = -1;
+
+        for (net.minecraft.client.gui.components.events.GuiEventListener listener : screen.children()) {
+            if (listener instanceof Button button) {
+                if (button.getWidth() > maxWidth) {
+                    maxWidth = button.getWidth();
+                }
+            }
+        }
+
+        if (maxWidth > 0) {
+            for (net.minecraft.client.gui.components.events.GuiEventListener listener : screen.children()) {
+                if (listener instanceof Button button && button.getWidth() == maxWidth && button.getY() > maxY) {
+                    maxY = button.getY();
+                    largest = button;
+                }
+            }
+        }
+
+        return largest;
+    }
+
+    /**
+     * Toggle the animation dropdown open/closed
+     */
+    private static void toggleAnimationDropdown() {
+        isAnimationDropdownOpen = !isAnimationDropdownOpen;
+        updateAnimationDropdownState();
+    }
+
+    /**
+     * Update animation dropdown button visibility and toggle button text
+     */
+    private static void updateAnimationDropdownState() {
+        if (animationToggleButton != null) {
+            animationToggleButton.setMessage(Component.literal(isAnimationDropdownOpen ? "×" : ">"));
+        }
+        for (Button button : animationButtons) {
+            button.visible = isAnimationDropdownOpen && previewControlsShown;
+            button.active = isAnimationDropdownOpen && previewControlsShown;
+        }
+    }
+
+    /**
+     * Get list of available animations
+     * Returns vanilla Minecraft animation states
+     */
+    private static java.util.List<String> getAvailableAnimations() {
+        java.util.List<String> animations = new java.util.ArrayList<>();
+        animations.add("idle");   // Button 1: Idle pose
+        animations.add("walk");   // Button 2: Walking pose
+        animations.add("sit");    // Button 3: Sitting pose
+        return animations;
+    }
+}

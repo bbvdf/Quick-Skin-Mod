@@ -55,7 +55,7 @@ fun normalizeFmlToml(file: java.io.File) {
     var architecturyRangeCount = 0
     var text = file.readLines(Charsets.UTF_8).joinToString("\n") { line ->
         val trimmed = line.trim()
-        if (trimmed == "[[dependencies.quickskin]]") activeDependency = null
+        if (trimmed == "[[dependencies.onlineskins]]") activeDependency = null
         if (trimmed.startsWith("modId = \"")) {
             activeDependency = trimmed.substringAfter('"').substringBefore('"')
         }

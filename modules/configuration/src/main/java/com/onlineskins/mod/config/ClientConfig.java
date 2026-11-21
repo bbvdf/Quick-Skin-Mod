@@ -1,0 +1,523 @@
+package com.onlineskins.mod.config;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.onlineskins.mod.platform.QuickSkinInfo;
+import com.onlineskins.mod.common.data.BackgroundStyle;
+import com.onlineskins.mod.common.data.ContentId;
+import com.onlineskins.mod.common.data.SkinSortMode;
+import com.onlineskins.mod.common.util.BoundedFileReader;
+import com.onlineskins.mod.platform.PlatformHelper;
+
+import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Client-side configuration for QuickSkin
+ * Stored in JSON format in config directory
+ */
+public class ClientConfig {
+    private static final int MAX_CONFIG_BYTES = 1024 * 1024;
+    private static final int MAX_CAPE_SPEED_ENTRIES = 4096;
+    private static final int MAX_FAVORITE_CAPES = 4096;
+    private static volatile ClientConfig instance;
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    /**
+     * Version of the stored settings. A file written before a version existed reads as 0; each
+     * step in {@link #migrate()} brings an older file up to date once.
+     */
+    static final int CURRENT_CONFIG_VERSION = 1;
+
+    public int configVersion = 0;
+
+    // GUI Settings
+    public boolean showSkinPreviewOverlay = false;
+    public String overlayPosition = "BOTTOM_RIGHT"; // TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
+    public int previewScale = 30;
+    public int guiScale = 1; // GUI scaling factor (1-4)
+    public boolean enablePlayerPreviewCustomization = false; // Enable customization (resize, reposition) of player previews
+    public boolean showTitleScreenPreview = true; // Show the player preview and its controls on the title screen
+    public boolean showPauseMenuPreview = true; // Show the player preview and its controls in the pause menu
+    public boolean compactChangeSkinButton = false; // Show the title/pause menu Change Skin button as an icon
+    public float hudOverlayRotation = 20.0f;
+
+    // Player Preview Slider Percentages (1-100%) for different contexts
+    // 0 = use built-in default, non-zero = use that percentage
+    public int sizeModelPreviewPercentageTitleScreen = 0;
+    public int sizeModelPreviewPercentageSkinMenu = 0;
+    public int sizeModelPreviewPercentageCapeMenu = 0;
+    public int sizeModelPreviewPercentagePauseMenu = 0;
+    public int sizeModelPreviewPercentageHudOverlay = 30;
+
+    // Player Preview Position Offsets (X, Y) for different contexts
+    // These are added to the base offsets (which already include the intended defaults)
+    public int positionOffsetXTitleScreen = 0;
+    public int positionOffsetYTitleScreen = 0;
+    public int positionOffsetXSkinMenu = 0;
+    public int positionOffsetYSkinMenu = 0;
+    public int positionOffsetXCapeMenu = 0;
+    public int positionOffsetYCapeMenu = 0;
+    public int positionOffsetXPauseMenu = 0;
+    public int positionOffsetYPauseMenu = 0;
+    public int positionOffsetXHudOverlay = 0;
+    public int positionOffsetYHudOverlay = 0;
+
+    // Animation Settings
+    public float animationSpeed = 1.0f; // Default animation speed (deprecated, use per-cape speeds)
+    public boolean enableSmoothRotation = true;
+    public Map<String, Float> capeAnimationSpeeds = new HashMap<>(); // Per-cape animation speeds (capeId -> speed)
+    /** The speed a built-in cape plays at until the player picks one: the Rickroll GIF is too quick at its own timing. */
+    static final Map<String, Float> DEFAULT_CAPE_ANIMATION_SPEEDS = Map.of("known:rickroll", 0.4f);
+
+    // Performance Settings
+    public int maxCachedTextures = 100;
+
+    // Network Settings
+    public int networkTimeout = 5000; // milliseconds
+
+    // Transparency Settings
+    public boolean disableSkinTransparency = false; // Disable transparency in player skins
+
+    // Cape Settings
+    public boolean hideBuiltInCapes = false; // Hide built-in Minecraft capes from cape menu
+    public List<String> favoriteCapes = new ArrayList<>(); // Cape ids marked as favourites in the cape menu, in marking order
+
+    // Sorting Settings
+    public String skinSortMode = "LATEST_LAST"; // Skin list sorting mode
+    public boolean skinListRows = false; // Skin menu shows its skins as cards in rows instead of a grid of tiles
+
+    // Menu Background Style
+    public String menuBackgroundStyle = "vanilla_blur"; // "vanilla_blur" or "opaque_stars"
+
+    // --- NEW --- Modpack Settings
+    public boolean enablePlayerOwnSkinSystem = true; // When enabled, automatically downloads and protects the player's own skin.
+
+    // Logging Settings
+
+    // Active Skin Settings (persisted state)
+    public String activeSkinHash = "";
+    public String activeCpmModelHash = ""; // Active CPM model hash (selected .cpmmodel file)
+    public boolean pendingCpmSkinModeReset = false; // Reconcile CPM after it is reinstalled
+    @Deprecated // Now using per-skin model preferences stored in skin-preferences.json
+    public String activeModelType = "auto"; // "auto", "classic", "slim" (deprecated - kept for compatibility)
+    public String activeCapeHash = ""; // Active cape hash
+    public String activeElytraId = ""; // Cape id the elytra wear instead of the cape's ("": the cape's, "minecraft:elytra": vanilla's)
+    public String playerOwnSkinHash = ""; // Hash of the player's own Mojang skin
+    public boolean playerOwnSkinHidden = false; // The player deleted the own skin (older versions only hid its file)
+    public boolean capesFollowSkins = false; // The cape worn before capes belonged to skins was given to the skin worn then
+    public boolean sharedLibraryPreferencesMerged = false; // This instance's skin-preferences.json was added to the shared library's
+    public String playerOwnSkinTexture = ""; // Mojang texture address the own skin was downloaded from
+    public String playerOwnSkinAccount = ""; // Launcher account that playerOwnSkinHash was downloaded for
+    public AccountSkinPreferences accountSkins = new AccountSkinPreferences(); // Skin selection per launcher account
+    public AccountNicknames accountNicknames = new AccountNicknames(); // Cosmetic nickname per launcher account
+    public AccountHiddenArmor accountHiddenArmor = new AccountHiddenArmor(); // Armour pieces each launcher account hides
+
+    /** False when the file could not be read; such a file is never overwritten. */
+    private transient boolean persistable = true;
+
+    // Server Config Override (set by server, not saved to file)
+    public transient volatile ServerConfig serverOverride = null;
+
+    private ClientConfig() {
+        // Private constructor for singleton
+    }
+
+    public static synchronized ClientConfig getInstance() {
+        if (instance == null) {
+            instance = load();
+        }
+        return instance;
+    }
+
+    /**
+     * Load configuration from file
+     */
+    private static ClientConfig load() {
+        Path path = getConfigPath();
+        com.onlineskins.mod.platform.LegacyConfigAdoption.adopt(
+                path.getParent(), "quickskin-client.json", "onlineskins-client.json");
+        return load(path);
+    }
+
+    /**
+     * Reads the file, or writes the defaults when there is none. A file that cannot be read is
+     * left untouched: the defaults used instead are never saved over it, so a hand edit that
+     * broke the JSON cannot cost every launcher account its selections.
+     */
+    static ClientConfig load(Path configPath) {
+        if (Files.exists(configPath)) {
+            try {
+                String json = BoundedFileReader.readUtf8(configPath, MAX_CONFIG_BYTES);
+                if (json.isBlank()) {
+                    // An empty file holds nothing to keep: replace it with the defaults, as if
+                    // it were missing, so the settings stay savable.
+                    return writeDefaults(configPath);
+                }
+                ClientConfig config = parse(json);
+                if (config != null) {
+                    if (config.migrate()) {
+                        config.save(configPath);
+                    }
+                    return config;
+                }
+                QuickSkinInfo.LOGGER.error("Client config {} contained JSON null; using defaults and"
+                        + " leaving the file untouched until it is fixed", configPath);
+            } catch (Exception e) {
+                QuickSkinInfo.LOGGER.error("Could not read client config {}; using defaults and"
+                        + " leaving the file untouched until it is fixed", configPath, e);
+            }
+            ClientConfig fallback = new ClientConfig();
+            fallback.configVersion = CURRENT_CONFIG_VERSION;
+            fallback.persistable = false;
+            return fallback;
+        }
+
+        return writeDefaults(configPath);
+    }
+
+    /** The default settings, saved to {@code configPath}. */
+    private static ClientConfig writeDefaults(Path configPath) {
+        ClientConfig config = new ClientConfig();
+        config.configVersion = CURRENT_CONFIG_VERSION;
+        config.save(configPath);
+        return config;
+    }
+
+    /** Parses stored settings without migrating them; null for a JSON {@code null}. */
+    static ClientConfig parse(String json) {
+        ClientConfig config = GSON.fromJson(json, ClientConfig.class);
+        if (config != null) {
+            config.normalize();
+        }
+        return config;
+    }
+
+    /**
+     * Brings settings written by an older version up to date.
+     *
+     * @return whether anything changed, so the caller saves the file once
+     */
+    boolean migrate() {
+        if (configVersion >= CURRENT_CONFIG_VERSION) {
+            return false;
+        }
+        if (configVersion < 1) {
+            // 1: the blurred vanilla background replaces the starred one as the default. Every
+            // earlier file stored the old default whether or not the player chose it.
+            menuBackgroundStyle = BackgroundStyle.VANILLA_BLUR.getId();
+        }
+        configVersion = CURRENT_CONFIG_VERSION;
+        return true;
+    }
+
+    /**
+     * Save configuration to file
+     */
+    public synchronized boolean save() {
+        return save(getConfigPath());
+    }
+
+    synchronized boolean save(Path configPath) {
+        if (!persistable) {
+            QuickSkinInfo.LOGGER.warn("Not saving client config {}: it could not be read at start,"
+                    + " so it is left as it is", configPath);
+            return false;
+        }
+        try {
+            // Ensure config directory exists
+            Files.createDirectories(configPath.getParent());
+
+            normalize();
+            String json = GSON.toJson(this);
+            writeAtomically(configPath, json);
+            return true;
+        } catch (IOException e) {
+            QuickSkinInfo.LOGGER.error("Could not save client config {}", configPath, e);
+            return false;
+        }
+    }
+
+    /**
+     * Get config file path
+     */
+    private static Path getConfigPath() {
+        return PlatformHelper.getConfigDirectory().resolve("onlineskins-client.json");
+    }
+
+    /**
+     * Reload configuration from file
+     */
+    public static synchronized void reload() {
+        ServerConfig existingOverride = instance != null ? instance.serverOverride : null;
+        ClientConfig reloaded = load();
+        reloaded.serverOverride = existingOverride;
+        instance = reloaded;
+    }
+
+    /**
+     * Apply server config override
+     * Server can restrict certain settings
+     */
+    public void applyServerOverride(ServerConfig serverConfig) {
+        this.serverOverride = serverConfig;
+    }
+
+    /** Clears all policy inherited from the previous server connection. */
+    public void clearServerOverride() {
+        this.serverOverride = null;
+    }
+
+    /**
+     * Get current server config override
+     * @return Server config override, or null if not set
+     */
+    public ServerConfig getServerOverride() {
+        return serverOverride;
+    }
+
+    /**
+     * Check if skin transparency should be disabled
+     * Uses OR logic: if either client OR server disables transparency, it's disabled
+     */
+    public boolean shouldDisableSkinTransparency() {
+        // Client wants to disable transparency
+        if (disableSkinTransparency) {
+            return true;
+        }
+
+        // Server wants to disable transparency
+        if (serverOverride != null && serverOverride.disableSkinTransparency) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Get animation speed with clamping to prevent invalid values (deprecated)
+     * @return Clamped animation speed (0.01 to 10.0)
+     * @deprecated Use getCapeAnimationSpeed(String capeId) instead
+     */
+    @Deprecated
+    public float getAnimationSpeed() {
+        return Math.max(0.01f, Math.min(animationSpeed, 10.0f));
+    }
+
+    /**
+     * Get animation speed for a specific cape
+     * @param capeId The cape ID (e.g., "local_cape:hash" or "known:cape_name")
+     * @return Clamped animation speed (0.01 to 10.0); if not set, the cape's own default, else 1.0
+     */
+    public float getCapeAnimationSpeed(String capeId) {
+        if (capeId == null || capeId.isEmpty()) {
+            return 1.0f;
+        }
+
+        // Ensure the map is initialized (in case it's null after deserialization)
+        if (capeAnimationSpeeds == null) {
+            capeAnimationSpeeds = new HashMap<>();
+        }
+
+        Float speed = capeAnimationSpeeds.get(capeId);
+        if (speed == null) {
+            return DEFAULT_CAPE_ANIMATION_SPEEDS.getOrDefault(capeId, 1.0f);
+        }
+
+        // Clamp to prevent invalid values
+        return Math.max(0.01f, Math.min(speed, 10.0f));
+    }
+
+    /**
+     * Set animation speed for a specific cape
+     * @param capeId The cape ID
+     * @param speed The animation speed (will be clamped to 0.01-10.0)
+     */
+    public void setCapeAnimationSpeed(String capeId, float speed) {
+        if (capeId == null || capeId.isEmpty()) {
+            return;
+        }
+
+        // Ensure the map is initialized
+        if (capeAnimationSpeeds == null) {
+            capeAnimationSpeeds = new HashMap<>();
+        }
+
+        // Clamp and store
+        float clampedSpeed = Math.max(0.01f, Math.min(speed, 10.0f));
+        if (!capeAnimationSpeeds.containsKey(capeId)
+                && capeAnimationSpeeds.size() >= MAX_CAPE_SPEED_ENTRIES) {
+            capeAnimationSpeeds.remove(capeAnimationSpeeds.keySet().iterator().next());
+        }
+        capeAnimationSpeeds.put(capeId, clampedSpeed);
+    }
+
+    /** Whether the cape menu lists this cape among the favourites. */
+    public boolean isFavoriteCape(String capeId) {
+        return capeId != null && favoriteCapes != null && favoriteCapes.contains(capeId);
+    }
+
+    /** Marks or unmarks a cape as a favourite; a new favourite goes last. */
+    public void setFavoriteCape(String capeId, boolean favorite) {
+        if (capeId == null || capeId.isEmpty() || capeId.length() > 256) {
+            return;
+        }
+        if (favoriteCapes == null) {
+            favoriteCapes = new ArrayList<>();
+        }
+        favoriteCapes.remove(capeId);
+        if (favorite && favoriteCapes.size() < MAX_FAVORITE_CAPES) {
+            favoriteCapes.add(capeId);
+        }
+    }
+
+    /** Moves a favourite to the cape's new id in place, as an edit replaces a cape's content. */
+    public void renameFavoriteCape(String oldId, String newId) {
+        if (favoriteCapes == null || oldId == null || newId == null || oldId.equals(newId)) {
+            return;
+        }
+        int index = favoriteCapes.indexOf(oldId);
+        if (index < 0) {
+            return;
+        }
+        if (favoriteCapes.contains(newId)) {
+            favoriteCapes.remove(index);
+        } else {
+            favoriteCapes.set(index, newId);
+        }
+    }
+
+    /**
+     * Get skin sort mode with fallback to default
+     * @return Skin sort mode
+     */
+    public SkinSortMode getSkinSortMode() {
+        try {
+            return SkinSortMode.valueOf(skinSortMode);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            return SkinSortMode.LATEST_LAST;
+        }
+    }
+
+    /**
+     * Set skin sort mode and save configuration
+     * @param mode The sort mode to set
+     */
+    public void setSkinSortMode(SkinSortMode mode) {
+        this.skinSortMode = mode.name();
+        save();
+    }
+
+    /**
+     * Get menu background style with fallback to default
+     * @return Menu background style enum
+     */
+    public BackgroundStyle getMenuBackgroundStyle() {
+        return BackgroundStyle.fromId(menuBackgroundStyle);
+    }
+
+    /**
+     * Set menu background style
+     * @param style The background style to set
+     */
+    public void setMenuBackgroundStyle(BackgroundStyle style) {
+        this.menuBackgroundStyle = style.getId();
+        save();
+    }
+
+    /** Drops blank, overlong and repeated ids, keeping the first of each, up to the cap. */
+    static List<String> normalizeFavoriteCapes(List<String> favorites) {
+        List<String> out = new ArrayList<>();
+        if (favorites == null) {
+            return out;
+        }
+        for (String id : new LinkedHashSet<>(favorites)) {
+            if (id != null && !id.isEmpty() && id.length() <= 256 && out.size() < MAX_FAVORITE_CAPES) {
+                out.add(id);
+            }
+        }
+        return out;
+    }
+
+    private void normalize() {
+        if (overlayPosition == null) overlayPosition = "BOTTOM_RIGHT";
+        previewScale = Math.max(1, Math.min(previewScale, 200));
+        guiScale = Math.max(1, Math.min(guiScale, 4));
+        if (!Float.isFinite(hudOverlayRotation)) hudOverlayRotation = 20.0f;
+        if (!Float.isFinite(animationSpeed)) animationSpeed = 1.0f;
+        animationSpeed = Math.max(0.01f, Math.min(animationSpeed, 10.0f));
+        maxCachedTextures = Math.max(1, Math.min(maxCachedTextures, 4096));
+        networkTimeout = Math.max(1_000, Math.min(networkTimeout, 60_000));
+        if (capeAnimationSpeeds == null) capeAnimationSpeeds = new HashMap<>();
+        capeAnimationSpeeds.entrySet().removeIf(entry -> entry.getKey() == null
+                || entry.getKey().length() > 256 || entry.getValue() == null
+                || !Float.isFinite(entry.getValue()));
+        while (capeAnimationSpeeds.size() > MAX_CAPE_SPEED_ENTRIES) {
+            capeAnimationSpeeds.remove(capeAnimationSpeeds.keySet().iterator().next());
+        }
+        favoriteCapes = normalizeFavoriteCapes(favoriteCapes);
+        if (skinSortMode == null) skinSortMode = "LATEST_LAST";
+        if (menuBackgroundStyle == null) menuBackgroundStyle = BackgroundStyle.VANILLA_BLUR.getId();
+        activeSkinHash = validHashOrEmpty(activeSkinHash);
+        activeCpmModelHash = validHashOrEmpty(activeCpmModelHash);
+        if (!("auto".equals(activeModelType) || "classic".equals(activeModelType)
+                || "slim".equals(activeModelType))) activeModelType = "auto";
+        if (activeCapeHash == null || activeCapeHash.length() > 256
+                || activeCapeHash.chars().anyMatch(Character::isISOControl)) activeCapeHash = "";
+        if (activeElytraId == null || activeElytraId.length() > 256
+                || activeElytraId.chars().anyMatch(Character::isISOControl)) activeElytraId = "";
+        playerOwnSkinHash = validHashOrEmpty(playerOwnSkinHash);
+        if (playerOwnSkinTexture == null || playerOwnSkinTexture.length() > 512 || playerOwnSkinHash.isEmpty()) {
+            playerOwnSkinTexture = "";
+        }
+        if (!AccountSkinPreferences.isKey(playerOwnSkinAccount)) playerOwnSkinAccount = "";
+        if (playerOwnSkinHash.isEmpty()) playerOwnSkinHidden = false;
+        if (accountSkins == null) accountSkins = new AccountSkinPreferences();
+        accountSkins.normalize();
+        if (accountNicknames == null) accountNicknames = new AccountNicknames();
+        accountNicknames.normalize();
+        if (accountHiddenArmor == null) accountHiddenArmor = new AccountHiddenArmor();
+        accountHiddenArmor.normalize();
+    }
+
+    private static void writeAtomically(Path target, String content) throws IOException {
+        Path parent = target.toAbsolutePath().normalize().getParent();
+        if (parent == null) throw new IOException("Client configuration has no parent directory");
+        Files.createDirectories(parent);
+        Path temporary = Files.createTempFile(parent, ".onlineskins-client-", ".tmp");
+        try {
+            byte[] encoded = content.getBytes(StandardCharsets.UTF_8);
+            if (encoded.length > MAX_CONFIG_BYTES) {
+                throw new IOException("Client configuration exceeds the size limit");
+            }
+            Files.write(temporary, encoded);
+            byte[] verified = BoundedFileReader.readBytes(temporary, MAX_CONFIG_BYTES);
+            if (!Arrays.equals(encoded, verified)) {
+                throw new IOException("Client configuration temp-file verification failed");
+            }
+            try {
+                Files.move(temporary, target.toAbsolutePath().normalize(),
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, target.toAbsolutePath().normalize(),
+                        StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private static String validHashOrEmpty(String value) {
+        if (value == null || value.isEmpty()) return "";
+        return ContentId.parse(value) != null ? value : "";
+    }
+}

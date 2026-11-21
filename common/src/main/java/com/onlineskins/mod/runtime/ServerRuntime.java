@@ -1,0 +1,242 @@
+package com.onlineskins.mod.runtime;
+
+import com.onlineskins.mod.platform.QuickSkinInfo;
+import com.onlineskins.mod.config.ServerConfig;
+import com.onlineskins.mod.networking.MissingModNotice;
+import com.onlineskins.mod.networking.ServerNetworkHandler;
+import com.onlineskins.mod.networking.TextureTransferLimits;
+import com.onlineskins.mod.networking.protocol.ProtocolSessions;
+import com.onlineskins.mod.server.concurrent.ServerTextureIngressExecutor;
+import com.onlineskins.mod.server.concurrent.ServerCacheIoExecutor;
+import com.onlineskins.mod.server.data.ServerCooldownManager;
+import com.onlineskins.mod.server.data.ServerNicknameStore;
+import com.onlineskins.mod.server.data.ServerSkinAssignmentStore;
+import com.onlineskins.mod.server.data.ServerPlayerAppearanceRepository;
+import com.onlineskins.mod.server.storage.MissingModNoticeLedger;
+import com.onlineskins.mod.server.storage.ServerAnimationCache;
+import com.onlineskins.mod.server.storage.ServerAppearanceStorage;
+import com.onlineskins.mod.server.storage.ServerTextureCache;
+import com.onlineskins.mod.server.vanilla.AccountSkinShareService;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+
+import java.util.Objects;
+import java.util.UUID;
+
+/**
+ * Owns state whose lifetime is one running Minecraft server.
+ *
+ * <p>The backing stores remain compatible singletons for existing callers, but lifecycle events
+ * now reset them through one composition root instead of relying on scattered cleanup.</p>
+ */
+public final class ServerRuntime implements AutoCloseable {
+    private static final ServerRuntime INSTANCE = new ServerRuntime(
+            ServerTextureCache.getInstance(),
+            ServerAnimationCache.getInstance(),
+            ServerAppearanceStorage.getInstance(),
+            ServerPlayerAppearanceRepository.getInstance(),
+            ServerCooldownManager.getInstance()
+    );
+
+    private final ServerTextureCache textureCache;
+    private final ServerAnimationCache animationCache;
+    private final ServerAppearanceStorage appearanceStorage;
+    private final ServerPlayerAppearanceRepository appearanceRepository;
+    private final ServerCooldownManager cooldownManager;
+
+    private MinecraftServer activeServer;
+
+    public ServerRuntime(
+            ServerTextureCache textureCache,
+            ServerAnimationCache animationCache,
+            ServerAppearanceStorage appearanceStorage,
+            ServerPlayerAppearanceRepository appearanceRepository,
+            ServerCooldownManager cooldownManager
+    ) {
+        this.textureCache = Objects.requireNonNull(textureCache, "textureCache");
+        this.animationCache = Objects.requireNonNull(animationCache, "animationCache");
+        this.appearanceStorage = Objects.requireNonNull(appearanceStorage, "appearanceStorage");
+        this.appearanceRepository = Objects.requireNonNull(appearanceRepository, "appearanceRepository");
+        this.cooldownManager = Objects.requireNonNull(cooldownManager, "cooldownManager");
+    }
+
+    public static ServerRuntime getInstance() {
+        return INSTANCE;
+    }
+
+    /** Initializes all world-scoped stores after first discarding state from an earlier server. */
+    public synchronized void start(MinecraftServer server) {
+        Objects.requireNonNull(server, "server");
+
+        if (activeServer == server) {
+            return;
+        }
+        if (activeServer != null && activeServer != server) {
+            QuickSkinInfo.LOGGER.warn("Starting a new QuickSkin server runtime before the previous one stopped; resetting stale state");
+        }
+
+        resetTransientState();
+        ServerConfig.reload();
+        // Before the texture cache loads: a stored texture over the limit is not served.
+        int uploadLimit = ProtocolSessions.getInstance().configureServerUploadLimit(
+                ServerConfig.getInstance().maxTextureUploadBytes());
+        textureCache.configureUploadLimit(uploadLimit);
+        int skinResolution = textureCache.configureMaxSkinResolution(
+                ServerConfig.getInstance().maxSkinResolutionPixels());
+        if (skinResolution > 0) {
+            QuickSkinInfo.LOGGER.info("Quick Skin accepts skins up to {} pixels wide (maxSkinResolution"
+                    + " in onlineskins-server.json); capes are not limited", skinResolution);
+        }
+        QuickSkinInfo.LOGGER.info("Quick Skin accepts skins and capes up to {} KiB per texture"
+                + " (maxTextureUploadKilobytes in onlineskins-server.json)", uploadLimit / 1024);
+        if (uploadLimit < TextureTransferLimits.DEFAULT_SERVER_UPLOAD_BYTES) {
+            // Released clients refuse the whole sync, not just the texture; no server can fix it.
+            QuickSkinInfo.LOGGER.warn("Players on Quick Skin 3.1.0 or older with a skin or cape"
+                    + " over this {} KiB limit will not sync their appearance (skin, cape and"
+                    + " model) until they update or choose a smaller texture", uploadLimit / 1024);
+        }
+        ServerCacheIoExecutor.getInstance().start();
+        java.nio.file.Path worldPath = server.getWorldPath(
+                net.minecraft.world.level.storage.LevelResource.ROOT);
+        textureCache.init(worldPath);
+        animationCache.init(worldPath);
+        appearanceStorage.init(worldPath);
+        MissingModNoticeLedger.getInstance().init(worldPath);
+        int offlineAppearances = appearanceStorage.loadOfflineAppearances();
+        if (offlineAppearances > 0) {
+            QuickSkinInfo.LOGGER.info("Quick Skin shares the saved appearance of {} players who are"
+                    + " not connected", offlineAppearances);
+        }
+        // Before anyone joins: a returning player's join message already shows their nickname
+        ServerNicknameStore.getInstance().init(worldPath);
+        int nicknames = ServerNicknameStore.getInstance().load();
+        if (nicknames > 0) {
+            QuickSkinInfo.LOGGER.info("Quick Skin read the nicknames of {} players", nicknames);
+        }
+        // The names /onlineskins nickname random hands out, for admins to edit
+        com.onlineskins.mod.server.data.NicknamePool.writeDefaultIfMissing(
+                com.onlineskins.mod.platform.PlatformHelper.getConfigDirectory()
+                        .resolve(com.onlineskins.mod.server.data.NicknamePool.FILE_NAME));
+        // Skins admins gave players, and the skin pool with the skin folder's PNGs, all pinned
+        ServerSkinAssignmentStore.getInstance().init(worldPath);
+        ServerSkinAssignmentStore.getInstance().load();
+        com.onlineskins.mod.networking.ServerSkinAssignments.start(
+                com.onlineskins.mod.platform.PlatformHelper.getConfigDirectory()
+                        .resolve(com.onlineskins.mod.server.data.SkinPoolFolder.DIRECTORY_NAME));
+        ServerTextureIngressExecutor.getInstance().start();
+        AccountSkinProfileTarget accountSkinTarget = new AccountSkinProfileTarget(server);
+        AccountSkinShareService.getInstance().start(accountSkinTarget);
+        logAccountSkinSharing(server, accountSkinTarget);
+        activeServer = server;
+    }
+
+    private static void logAccountSkinSharing(MinecraftServer server, AccountSkinProfileTarget target) {
+        if (!ServerConfig.getInstance().shareAccountSkinWithVanillaClients) return;
+        if (!server.usesAuthentication()) {
+            QuickSkinInfo.LOGGER.info("shareAccountSkinWithVanillaClients has no effect: this "
+                    + "server runs in offline mode, so Mojang never signed its players' skins");
+        } else if (target.nonMojangReason().isPresent()) {
+            QuickSkinInfo.LOGGER.info("shareAccountSkinWithVanillaClients has no effect: this "
+                    + "server does not authenticate players with Mojang ({}), so a profile id need "
+                    + "not be the Mojang account with that id", target.nonMojangReason().get());
+        } else {
+            QuickSkinInfo.LOGGER.info("Sharing the Mojang account skins that Quick Skin players "
+                    + "upload with players who do not run Quick Skin");
+        }
+    }
+
+    /** Persists state while the server and its player list are still available. */
+    public synchronized void prepareStop(MinecraftServer server) {
+        Objects.requireNonNull(server, "server");
+        if (activeServer == null || activeServer != server) {
+            QuickSkinInfo.LOGGER.warn("Ignoring a stale QuickSkin server-stopping callback");
+            return;
+        }
+
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            appearanceStorage.savePlayerAppearance(player.getUUID());
+        }
+        textureCache.saveAll();
+        ServerNicknameStore.getInstance().saveNow();
+        ServerSkinAssignmentStore.getInstance().saveNow();
+        ServerConfig.getInstance().save();
+    }
+
+    /** Saves and evicts state owned by a player session. */
+    public synchronized boolean playerDisconnected(
+            MinecraftServer server, UUID playerId, Object connection) {
+        if (server == null || server != activeServer || playerId == null || connection == null) {
+            if (server != null && activeServer != null && server != activeServer) {
+                QuickSkinInfo.LOGGER.warn("Ignoring a stale QuickSkin player-disconnect callback");
+            }
+            return false;
+        }
+        ServerPlayer activePlayer = server.getPlayerList().getPlayer(playerId);
+        if (activePlayer != null && activePlayer.connection != connection) {
+            QuickSkinInfo.LOGGER.debug(
+                    "Ignoring an old QuickSkin session cleanup after {} reconnected", playerId);
+            // Exact-session network state is safe to release even though UUID-scoped gameplay
+            // state now belongs to the replacement connection.
+            ServerNetworkHandler.onPlayerDisconnected(playerId, connection);
+            AccountSkinShareService.getInstance().playerDisconnected(playerId, connection);
+            MissingModNotice.playerDisconnected(connection);
+            return false;
+        }
+        appearanceStorage.savePlayerAppearance(playerId);
+        // Players who join later still see this player's appearance, now without pins
+        appearanceRepository.playerLeft(playerId);
+        com.onlineskins.mod.networking.ServerSkinAssignments.playerGone(playerId);
+        cooldownManager.removePlayer(playerId);
+        ServerNetworkHandler.onPlayerDisconnected(playerId, connection);
+        AccountSkinShareService.getInstance().playerDisconnected(playerId, connection);
+        MissingModNotice.playerDisconnected(connection);
+        return true;
+    }
+
+    /** Completes shutdown and guarantees no state can leak into the next integrated server. */
+    public synchronized void stop(MinecraftServer server) {
+        if (activeServer != null && activeServer != server) {
+            QuickSkinInfo.LOGGER.warn("Ignoring a stale QuickSkin server-stopped callback");
+            return;
+        }
+        resetTransientState();
+        activeServer = null;
+    }
+
+    private void resetTransientState() {
+        runCleanup("stop server texture ingress", ServerTextureIngressExecutor.getInstance()::close);
+        runCleanup("stop account skin sharing", AccountSkinShareService.getInstance()::close);
+        runCleanup("clear server textures", textureCache::clear);
+        runCleanup("drain server cache cleanup", ServerCacheIoExecutor.getInstance()::close);
+        runCleanup("clear server animation metadata", animationCache::clear);
+        runCleanup("clear server appearances", appearanceRepository::clear);
+        runCleanup("release server appearance storage", appearanceStorage::clear);
+        runCleanup("release nicknames", ServerNicknameStore.getInstance()::clear);
+        runCleanup("release assigned skins", ServerSkinAssignmentStore.getInstance()::clear);
+        runCleanup("clear server cooldowns", cooldownManager::clear);
+        runCleanup("clear transient network transfers", ServerNetworkHandler::clearTransientNetworkState);
+        runCleanup("forget pending Quick Skin notices", MissingModNotice::clear);
+        runCleanup("release the Quick Skin notice record", MissingModNoticeLedger.getInstance()::clear);
+    }
+
+    private static void runCleanup(String operation, Runnable action) {
+        try {
+            action.run();
+        } catch (RuntimeException | LinkageError error) {
+            QuickSkinInfo.LOGGER.warn("Failed to {} while resetting the QuickSkin server runtime", operation, error);
+        }
+    }
+
+    @Override
+    public synchronized void close() {
+        if (activeServer != null) {
+            try {
+                prepareStop(activeServer);
+            } catch (RuntimeException | LinkageError error) {
+                QuickSkinInfo.LOGGER.error("Failed to persist QuickSkin state during explicit server shutdown", error);
+            }
+        }
+        resetTransientState();
+        activeServer = null;
+    }
+}
