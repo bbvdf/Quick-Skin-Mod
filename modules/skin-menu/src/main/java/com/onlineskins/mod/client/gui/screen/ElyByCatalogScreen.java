@@ -38,6 +38,7 @@ import net.minecraft.resources.Identifier;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -121,8 +122,10 @@ public class ElyByCatalogScreen extends Screen {
     private String prefetchedKey;
     /** The page a prefetch is in flight for, so one page is never fetched twice. */
     private String prefetchingKey;
-    /** Textures of the page read ahead, so its first screen draws at once when the reader turns. */
+    /** Textures of the page read ahead, so every screen of it draws at once when the reader turns. */
     private final Map<Long, byte[]> prefetchedFaces = new HashMap<>();
+    /** Tiles downloaded at a time ahead of the reader, within the client's four I/O workers. */
+    private static final int PREFETCH_BATCH = 8;
 
     private Button previousButton;
     private Button nextButton;
@@ -343,17 +346,26 @@ public class ElyByCatalogScreen extends Screen {
     }
 
     /**
-     * Downloads what the page read ahead shows on its first screen, so turning to it draws skins
-     * instead of filling tile by tile. The rest of the page still arrives as it is scrolled to.
+     * Downloads what the page read ahead shows, so turning to any of its screens draws skins
+     * instead of filling tile by tile. It is the whole page, not one screen of it, and it runs for
+     * every catalog: a batch at a time, because the client's I/O queue holds only four workers.
      */
     private void prefetchFaces(CatalogPage page, String key) {
-        int count = Math.min(perScreen(), page.items.size());
-        for (int index = 0; index < count; index++) {
+        prefetchFaces(page, key, 0);
+    }
+
+    private void prefetchFaces(CatalogPage page, String key, int from) {
+        int to = Math.min(from + PREFETCH_BATCH, page.items.size());
+        if (from >= to || this.minecraft == null) {
+            return;
+        }
+        List<CompletableFuture<?>> batch = new ArrayList<>(to - from);
+        for (int index = from; index < to; index++) {
             CatalogItem item = page.items.get(index);
             if (prefetchedFaces.containsKey(item.id)) {
                 continue;
             }
-            downloadTexture(item)
+            batch.add(downloadTexture(item)
                     .thenAccept(bytes -> {
                         if (this.minecraft != null) {
                             this.minecraft.execute(() -> {
@@ -366,8 +378,18 @@ public class ElyByCatalogScreen extends Screen {
                     .exceptionally(throwable -> {
                         // A tile that fails to arrive ahead of time is fetched again when shown.
                         return null;
-                    });
+                    }));
         }
+        if (batch.isEmpty()) {
+            prefetchFaces(page, key, to);
+            return;
+        }
+        CompletableFuture.allOf(batch.toArray(new CompletableFuture<?>[0]))
+                .thenRun(() -> {
+                    if (this.minecraft != null) {
+                        this.minecraft.execute(() -> prefetchFaces(page, key, to));
+                    }
+                });
     }
 
     private void loadPage(int page, int targetScreen) {
