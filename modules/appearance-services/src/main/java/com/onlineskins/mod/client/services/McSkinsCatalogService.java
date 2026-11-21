@@ -16,8 +16,10 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,6 +59,12 @@ public final class McSkinsCatalogService {
 
     private static final Pattern SKIN_LINK = Pattern.compile("href=\"/skin/([A-Za-z0-9_\\-]+)\"");
     private static final Pattern SLUG = Pattern.compile("[A-Za-z0-9_\\-]{1,80}");
+    /**
+     * Each window's first site page as it was read. The site answers a page past the end by
+     * repeating page one, and a window's last page can hold a full twenty-four cards, so comparing
+     * cards with the page before is not enough: a repeat of the opening page is the end too.
+     */
+    private final Map<Window, List<String>> openingPages = new ConcurrentHashMap<>();
 
     /** The site's three 128x128 entries, in the order the screen lists them. */
     public enum Window {
@@ -115,6 +123,16 @@ public final class McSkinsCatalogService {
             if (slugs.equals(previous)) {
                 reachedEnd = true;
                 break;
+            }
+            int sitePage = first + offset;
+            if (sitePage == 1) {
+                openingPages.put(window, slugs);
+            } else {
+                List<String> opening = openingPages.get(window);
+                if (opening != null && slugs.equals(opening)) {
+                    reachedEnd = true;
+                    break;
+                }
             }
             previous = slugs;
             for (String slug : slugs) {
