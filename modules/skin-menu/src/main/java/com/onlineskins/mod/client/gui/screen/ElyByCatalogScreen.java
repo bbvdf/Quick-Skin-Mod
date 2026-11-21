@@ -38,7 +38,6 @@ import net.minecraft.resources.Identifier;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -122,10 +121,10 @@ public class ElyByCatalogScreen extends Screen {
     private String prefetchedKey;
     /** The page a prefetch is in flight for, so one page is never fetched twice. */
     private String prefetchingKey;
-    /** Textures of the page read ahead, so every screen of it draws at once when the reader turns. */
+    /** Textures of the screen read ahead, so turning to it draws at once. */
     private final Map<Long, byte[]> prefetchedFaces = new HashMap<>();
-    /** Tiles downloaded at a time ahead of the reader, within the client's four I/O workers. */
-    private static final int PREFETCH_BATCH = 8;
+    /** Entries whose texture a prefetch already asked for, so one tile is never fetched twice. */
+    private final Set<Long> prefetching = new HashSet<>();
 
     private Button previousButton;
     private Button nextButton;
@@ -273,6 +272,7 @@ public class ElyByCatalogScreen extends Screen {
             screenIndex = target;
             requestVisibleFaces();
             updatePagingButtons();
+            prefetchAhead();
             return;
         }
         if (target >= screenCount() && catalogPage < lastCatalogPage) {
@@ -328,7 +328,8 @@ public class ElyByCatalogScreen extends Screen {
                             if (key.equals(catalogKey(catalogPage + 1))) {
                                 prefetchedPage = page;
                                 prefetchedKey = key;
-                                prefetchFaces(page, key);
+                                prefetchFaces(page.items, 0,
+                                        Math.min(perScreen(), page.items.size()), key);
                             }
                         });
                     }
@@ -346,30 +347,38 @@ public class ElyByCatalogScreen extends Screen {
     }
 
     /**
-     * Downloads what the page read ahead shows, so turning to any of its screens draws skins
-     * instead of filling tile by tile. It is the whole page, not one screen of it, and it runs for
-     * every catalog: a batch at a time, because the client's I/O queue holds only four workers.
+     * Reads the screen after this one while the reader is still on this one: its ten skins, or the
+     * next page when this page has no screen left. Called after every screen and every page, so
+     * turning never lands on a screen of empty tiles.
      */
-    private void prefetchFaces(CatalogPage page, String key) {
-        prefetchFaces(page, key, 0);
-    }
-
-    private void prefetchFaces(CatalogPage page, String key, int from) {
-        int to = Math.min(from + PREFETCH_BATCH, page.items.size());
-        if (from >= to || this.minecraft == null) {
+    private void prefetchAhead() {
+        int from = (screenIndex + 1) * perScreen();
+        if (from < pageItems.size()) {
+            prefetchFaces(pageItems, from, Math.min(from + perScreen(), pageItems.size()), null);
             return;
         }
-        List<CompletableFuture<?>> batch = new ArrayList<>(to - from);
-        for (int index = from; index < to; index++) {
-            CatalogItem item = page.items.get(index);
-            if (prefetchedFaces.containsKey(item.id)) {
+        prefetchNextPage();
+    }
+
+    /**
+     * Downloads the textures of a run of entries, one screen of tiles at a time. {@code key} pins
+     * the run to the page read ahead; a run inside the page being shown carries none.
+     */
+    private void prefetchFaces(List<CatalogItem> items, int from, int to, String key) {
+        if (this.minecraft == null) {
+            return;
+        }
+        for (int index = from; index < to && index < items.size(); index++) {
+            CatalogItem item = items.get(index);
+            if (prefetchedFaces.containsKey(item.id) || !prefetching.add(item.id)) {
                 continue;
             }
-            batch.add(downloadTexture(item)
+            downloadTexture(item)
                     .thenAccept(bytes -> {
                         if (this.minecraft != null) {
                             this.minecraft.execute(() -> {
-                                if (key.equals(prefetchedKey)) {
+                                prefetching.remove(item.id);
+                                if (key == null || key.equals(prefetchedKey)) {
                                     prefetchedFaces.put(item.id, bytes);
                                 }
                             });
@@ -377,19 +386,12 @@ public class ElyByCatalogScreen extends Screen {
                     })
                     .exceptionally(throwable -> {
                         // A tile that fails to arrive ahead of time is fetched again when shown.
+                        if (this.minecraft != null) {
+                            this.minecraft.execute(() -> prefetching.remove(item.id));
+                        }
                         return null;
-                    }));
+                    });
         }
-        if (batch.isEmpty()) {
-            prefetchFaces(page, key, to);
-            return;
-        }
-        CompletableFuture.allOf(batch.toArray(new CompletableFuture<?>[0]))
-                .thenRun(() -> {
-                    if (this.minecraft != null) {
-                        this.minecraft.execute(() -> prefetchFaces(page, key, to));
-                    }
-                });
     }
 
     private void loadPage(int page, int targetScreen) {
@@ -436,7 +438,7 @@ public class ElyByCatalogScreen extends Screen {
                 : Math.max(0, Math.min(targetScreen, screenCount() - 1));
         updatePagingButtons();
         requestVisibleFaces();
-        prefetchNextPage();
+        prefetchAhead();
     }
 
     private void updatePagingButtons() {
