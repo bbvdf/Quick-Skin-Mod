@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "quickskin",
   "version": "${version}",
-  "name": "Quick Skin",
+  "name": "OnlineSkins",
   "description": "Change, preview, and synchronize local skins, capes, and CPM models in-game across Fabric and Forge.",
   "authors": [
     "The Plum Team"

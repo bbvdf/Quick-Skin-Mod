@@ -194,11 +194,7 @@ public class PlayerSkinMenuScreen extends Screen implements com.quickskin.mod.cl
     private long lastEnterKeyAt;
 
     public PlayerSkinMenuScreen(@Nullable Screen parent) {
-//? if <1.21 {
         super(Component.translatable("quickskin.screen.skin_menu.title"));
-//?} else {
-        super(Component.literal("Quick Skin"));
-//?}
         this.parent = parent;
     }
 

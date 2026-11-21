@@ -15,7 +15,7 @@ import java.util.List;
  * default width. A chat set narrower wraps some lines again; the message still reads.</p>
  */
 public final class MissingModNoticeLayout {
-    public static final String TITLE = "Quick Skin";
+    public static final String TITLE = "OnlineSkins";
     public static final int TITLE_RGB = 0xD873AD;
     /** The block character; 8 pixels wide with a 9-pixel advance, the chat line's height. */
     static final String PIXEL = "█";
