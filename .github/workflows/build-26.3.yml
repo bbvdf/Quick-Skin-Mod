@@ -1,0 +1,30 @@
+name: Build (Fabric 26.3)
+
+# Builds the one lane this fork ships. The repository's own workflows build the whole
+# release matrix; this one exists so a change can be built in the cloud and the jar
+# downloaded, without a local toolchain and without waiting on the full matrix.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Build the Fabric 26.3 jar
+        env:
+          ORG_GRADLE_PROJECT_onlineskinsTarget: '26.3'
+        run: ./gradlew --no-daemon --no-parallel --console=plain :fabric:26.3:shadowJar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: onlineskins-fabric-26.3
+          path: fabric/versions/26.3/build/libs/*.jar
+          if-no-files-found: error
