@@ -46,7 +46,7 @@ group = rootProject.property("maven_group") as String
 version = rootProject.property("mod_version") as String
 
 extensions.configure<BasePluginExtension>("base") {
-    archivesName.set("Quick Skin - Fabric - $minecraftVersion")
+    archivesName.set("OnlineSkins - Fabric - $minecraftVersion")
 }
 
 extensions.configure<ArchitectPluginExtension>("architectury") {

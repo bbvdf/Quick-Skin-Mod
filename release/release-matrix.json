@@ -120,7 +120,7 @@
       "metadata_range": "=1.20.1",
       "gradle_task": ":fabric:1.20.1:remapJar",
       "harness_task": ":fabric:1.20.1:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.20.1/build/libs/Quick Skin - Fabric - 1.20.1-{mod_version}.jar",
+      "jar": "fabric/versions/1.20.1/build/libs/OnlineSkins - Fabric - 1.20.1-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.20.1/build/libs/Quick Skin E2E - Fabric - 1.20.1-0.0.0.jar",
       "game_versions": [
         "1.20.1"
@@ -163,7 +163,7 @@
       "metadata_range": "=1.21.1",
       "gradle_task": ":fabric:1.21.1:remapJar",
       "harness_task": ":fabric:1.21.1:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.21.1/build/libs/Quick Skin - Fabric - 1.21.1-{mod_version}.jar",
+      "jar": "fabric/versions/1.21.1/build/libs/OnlineSkins - Fabric - 1.21.1-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.21.1/build/libs/Quick Skin E2E - Fabric - 1.21.1-0.0.0.jar",
       "game_versions": [
         "1.21.1"
@@ -206,7 +206,7 @@
       "metadata_range": "=1.21.2",
       "gradle_task": ":fabric:1.21.2:remapJar",
       "harness_task": ":fabric:1.21.2:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.21.2/build/libs/Quick Skin - Fabric - 1.21.2-{mod_version}.jar",
+      "jar": "fabric/versions/1.21.2/build/libs/OnlineSkins - Fabric - 1.21.2-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.21.2/build/libs/Quick Skin E2E - Fabric - 1.21.2-0.0.0.jar",
       "game_versions": [
         "1.21.2"
@@ -249,7 +249,7 @@
       "metadata_range": "=1.21.3",
       "gradle_task": ":fabric:1.21.3:remapJar",
       "harness_task": ":fabric:1.21.3:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.21.3/build/libs/Quick Skin - Fabric - 1.21.3-{mod_version}.jar",
+      "jar": "fabric/versions/1.21.3/build/libs/OnlineSkins - Fabric - 1.21.3-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.21.3/build/libs/Quick Skin E2E - Fabric - 1.21.3-0.0.0.jar",
       "game_versions": [
         "1.21.3"
@@ -292,7 +292,7 @@
       "metadata_range": "=1.21.4",
       "gradle_task": ":fabric:1.21.4:remapJar",
       "harness_task": ":fabric:1.21.4:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.21.4/build/libs/Quick Skin - Fabric - 1.21.4-{mod_version}.jar",
+      "jar": "fabric/versions/1.21.4/build/libs/OnlineSkins - Fabric - 1.21.4-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.21.4/build/libs/Quick Skin E2E - Fabric - 1.21.4-0.0.0.jar",
       "game_versions": [
         "1.21.4"
@@ -335,7 +335,7 @@
       "metadata_range": "=1.21.5",
       "gradle_task": ":fabric:1.21.5:remapJar",
       "harness_task": ":fabric:1.21.5:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.21.5/build/libs/Quick Skin - Fabric - 1.21.5-{mod_version}.jar",
+      "jar": "fabric/versions/1.21.5/build/libs/OnlineSkins - Fabric - 1.21.5-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.21.5/build/libs/Quick Skin E2E - Fabric - 1.21.5-0.0.0.jar",
       "game_versions": [
         "1.21.5"
@@ -378,7 +378,7 @@
       "metadata_range": "=1.21.6",
       "gradle_task": ":fabric:1.21.6:remapJar",
       "harness_task": ":fabric:1.21.6:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.21.6/build/libs/Quick Skin - Fabric - 1.21.6-{mod_version}.jar",
+      "jar": "fabric/versions/1.21.6/build/libs/OnlineSkins - Fabric - 1.21.6-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.21.6/build/libs/Quick Skin E2E - Fabric - 1.21.6-0.0.0.jar",
       "game_versions": [
         "1.21.6"
@@ -421,7 +421,7 @@
       "metadata_range": "=1.21.7",
       "gradle_task": ":fabric:1.21.7:remapJar",
       "harness_task": ":fabric:1.21.7:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.21.7/build/libs/Quick Skin - Fabric - 1.21.7-{mod_version}.jar",
+      "jar": "fabric/versions/1.21.7/build/libs/OnlineSkins - Fabric - 1.21.7-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.21.7/build/libs/Quick Skin E2E - Fabric - 1.21.7-0.0.0.jar",
       "game_versions": [
         "1.21.7"
@@ -464,7 +464,7 @@
       "metadata_range": "=1.21.8",
       "gradle_task": ":fabric:1.21.8:remapJar",
       "harness_task": ":fabric:1.21.8:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.21.8/build/libs/Quick Skin - Fabric - 1.21.8-{mod_version}.jar",
+      "jar": "fabric/versions/1.21.8/build/libs/OnlineSkins - Fabric - 1.21.8-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.21.8/build/libs/Quick Skin E2E - Fabric - 1.21.8-0.0.0.jar",
       "game_versions": [
         "1.21.8"
@@ -507,7 +507,7 @@
       "metadata_range": "=1.21.9",
       "gradle_task": ":fabric:1.21.9:remapJar",
       "harness_task": ":fabric:1.21.9:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.21.9/build/libs/Quick Skin - Fabric - 1.21.9-{mod_version}.jar",
+      "jar": "fabric/versions/1.21.9/build/libs/OnlineSkins - Fabric - 1.21.9-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.21.9/build/libs/Quick Skin E2E - Fabric - 1.21.9-0.0.0.jar",
       "game_versions": [
         "1.21.9"
@@ -550,7 +550,7 @@
       "metadata_range": "=1.21.10",
       "gradle_task": ":fabric:1.21.10:remapJar",
       "harness_task": ":fabric:1.21.10:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.21.10/build/libs/Quick Skin - Fabric - 1.21.10-{mod_version}.jar",
+      "jar": "fabric/versions/1.21.10/build/libs/OnlineSkins - Fabric - 1.21.10-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.21.10/build/libs/Quick Skin E2E - Fabric - 1.21.10-0.0.0.jar",
       "game_versions": [
         "1.21.10"
@@ -593,7 +593,7 @@
       "metadata_range": "=1.21.11",
       "gradle_task": ":fabric:1.21.11:remapJar",
       "harness_task": ":fabric:1.21.11:remapE2EHarnessJar",
-      "jar": "fabric/versions/1.21.11/build/libs/Quick Skin - Fabric - 1.21.11-{mod_version}.jar",
+      "jar": "fabric/versions/1.21.11/build/libs/OnlineSkins - Fabric - 1.21.11-{mod_version}.jar",
       "harness_jar": "fabric/versions/1.21.11/build/libs/Quick Skin E2E - Fabric - 1.21.11-0.0.0.jar",
       "game_versions": [
         "1.21.11"
@@ -636,7 +636,7 @@
       "metadata_range": "=26.1",
       "gradle_task": ":fabric:26.1:shadowJar",
       "harness_task": ":fabric:26.1:e2eHarnessJar",
-      "jar": "fabric/versions/26.1/build/libs/Quick Skin - Fabric - 26.1-{mod_version}.jar",
+      "jar": "fabric/versions/26.1/build/libs/OnlineSkins - Fabric - 26.1-{mod_version}.jar",
       "harness_jar": "fabric/versions/26.1/build/libs/Quick Skin E2E - Fabric - 26.1-0.0.0.jar",
       "game_versions": [
         "26.1"
@@ -679,7 +679,7 @@
       "metadata_range": "=26.1.1",
       "gradle_task": ":fabric:26.1.1:shadowJar",
       "harness_task": ":fabric:26.1.1:e2eHarnessJar",
-      "jar": "fabric/versions/26.1.1/build/libs/Quick Skin - Fabric - 26.1.1-{mod_version}.jar",
+      "jar": "fabric/versions/26.1.1/build/libs/OnlineSkins - Fabric - 26.1.1-{mod_version}.jar",
       "harness_jar": "fabric/versions/26.1.1/build/libs/Quick Skin E2E - Fabric - 26.1.1-0.0.0.jar",
       "game_versions": [
         "26.1.1"
@@ -722,7 +722,7 @@
       "metadata_range": "=26.1.2",
       "gradle_task": ":fabric:26.1.2:shadowJar",
       "harness_task": ":fabric:26.1.2:e2eHarnessJar",
-      "jar": "fabric/versions/26.1.2/build/libs/Quick Skin - Fabric - 26.1.2-{mod_version}.jar",
+      "jar": "fabric/versions/26.1.2/build/libs/OnlineSkins - Fabric - 26.1.2-{mod_version}.jar",
       "harness_jar": "fabric/versions/26.1.2/build/libs/Quick Skin E2E - Fabric - 26.1.2-0.0.0.jar",
       "game_versions": [
         "26.1.2"
@@ -765,7 +765,7 @@
       "metadata_range": "=26.2",
       "gradle_task": ":fabric:26.2:shadowJar",
       "harness_task": ":fabric:26.2:e2eHarnessJar",
-      "jar": "fabric/versions/26.2/build/libs/Quick Skin - Fabric - 26.2-{mod_version}.jar",
+      "jar": "fabric/versions/26.2/build/libs/OnlineSkins - Fabric - 26.2-{mod_version}.jar",
       "harness_jar": "fabric/versions/26.2/build/libs/Quick Skin E2E - Fabric - 26.2-0.0.0.jar",
       "game_versions": [
         "26.2"
@@ -808,7 +808,7 @@
       "metadata_range": "=26.3",
       "gradle_task": ":fabric:26.3:shadowJar",
       "harness_task": ":fabric:26.3:e2eHarnessJar",
-      "jar": "fabric/versions/26.3/build/libs/Quick Skin - Fabric - 26.3-{mod_version}.jar",
+      "jar": "fabric/versions/26.3/build/libs/OnlineSkins - Fabric - 26.3-{mod_version}.jar",
       "harness_jar": "fabric/versions/26.3/build/libs/Quick Skin E2E - Fabric - 26.3-0.0.0.jar",
       "game_versions": [
         "26.3"
