@@ -90,49 +90,72 @@ public final class McSkinsCatalogService {
         return INSTANCE;
     }
 
-    /** Fetch one logical page of the chosen window, as the shared page type the screen draws. */
+    /**
+     * Fetch one logical page of the chosen window, as the shared page type the screen draws.
+     * <p>
+     * The first site page goes alone, because a window that fits in one page ends there; once it
+     * comes back full, the rest of the window's pages are read at the same time rather than one
+     * after another, which is most of what a page used to cost.
+     */
     public CompletableFuture<ElyByCatalogService.CatalogPage> fetchPage(int page, Window window) {
         int requested = Math.max(1, page);
         Window chosen = window == null ? Window.MONTH : window;
-        return ClientIoExecutor.supplyAsync(() -> readPages(requested, chosen));
+        int first = (requested - 1) * SITE_PAGES_PER_LOGICAL_PAGE + 1;
+        return readSlugs(chosen.pageUrl(first), true).thenCompose(opening -> {
+            if (opening.size() < SITE_PAGE_SIZE) {
+                return CompletableFuture.completedFuture(assemble(requested, chosen, List.of(opening)));
+            }
+            List<CompletableFuture<List<String>>> rest = new ArrayList<>();
+            for (int offset = 1; offset < SITE_PAGES_PER_LOGICAL_PAGE; offset++) {
+                rest.add(readSlugs(chosen.pageUrl(first + offset), false));
+            }
+            return CompletableFuture.allOf(rest.toArray(new CompletableFuture<?>[0]))
+                    .thenApply(done -> {
+                        List<List<String>> pages = new ArrayList<>(rest.size() + 1);
+                        pages.add(opening);
+                        for (CompletableFuture<List<String>> later : rest) {
+                            pages.add(later.getNow(List.of()));
+                        }
+                        return assemble(requested, chosen, pages);
+                    });
+        });
+    }
+
+    /** Reads one listing page's slugs; a page that fails mid-listing only ends the listing. */
+    private static CompletableFuture<List<String>> readSlugs(String url, boolean required) {
+        CompletableFuture<List<String>> future = ClientIoExecutor.supplyAsync(
+                () -> slugsOf(read(url, MAX_PAGE_BYTES)));
+        return required ? future : future.exceptionally(throwable -> List.of());
     }
 
     /**
-     * Read the site pages that make up one logical page. Each card carries only a slug, so the arm
-     * model is decided when its PNG arrives; the entry starts as classic, like a fresh import.
+     * Joins the site pages of one logical page. Each card carries only a slug, so the arm model is
+     * decided when its PNG arrives; the entry starts as classic, like a fresh import.
      */
-    private ElyByCatalogService.CatalogPage readPages(int logicalPage, Window window) {
-        int first = (logicalPage - 1) * SITE_PAGES_PER_LOGICAL_PAGE + 1;
+    private ElyByCatalogService.CatalogPage assemble(int logicalPage, Window window, List<List<String>> pages) {
         List<ElyByCatalogService.CatalogItem> items = new ArrayList<>();
         Set<String> seen = new HashSet<>();
+        List<String> opening = pages.isEmpty() ? List.of() : pages.get(0);
+        if (logicalPage == 1 && !opening.isEmpty()) {
+            openingPages.put(window, opening);
+        }
+        List<String> knownOpening = openingPages.get(window);
         List<String> previous = null;
-        boolean reachedEnd = false;
-        for (int offset = 0; offset < SITE_PAGES_PER_LOGICAL_PAGE; offset++) {
-            List<String> slugs;
-            try {
-                slugs = slugsOf(window.pageUrl(first + offset));
-            } catch (ElyByCatalogService.CatalogException failure) {
-                if (items.isEmpty()) throw failure;
-                break;
-            }
+        boolean reachedEnd = pages.isEmpty();
+        for (int index = 0; index < pages.size(); index++) {
+            List<String> slugs = pages.get(index);
             if (slugs.isEmpty()) {
                 reachedEnd = true;
                 break;
             }
             // Past its last page the site answers with page one again, so a repeat means the end.
-            if (slugs.equals(previous)) {
+            if (previous != null && slugs.equals(previous)) {
                 reachedEnd = true;
                 break;
             }
-            int sitePage = first + offset;
-            if (sitePage == 1) {
-                openingPages.put(window, slugs);
-            } else {
-                List<String> opening = openingPages.get(window);
-                if (opening != null && slugs.equals(opening)) {
-                    reachedEnd = true;
-                    break;
-                }
+            if (index > 0 && knownOpening != null && slugs.equals(knownOpening)) {
+                reachedEnd = true;
+                break;
             }
             previous = slugs;
             for (String slug : slugs) {

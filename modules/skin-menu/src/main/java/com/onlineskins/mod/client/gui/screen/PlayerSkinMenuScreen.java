@@ -538,8 +538,9 @@ public class PlayerSkinMenuScreen extends Screen implements com.onlineskins.mod.
                 confirmX, confirmY, confirmWidth, confirmHeight);
         ActionButtonsPanel.ActionCallbacks callbacks = new ActionButtonsPanel.ActionCallbacks(
                 this::cycleBodyWidth,
-                () -> openCatalog(true),
-                () -> openCatalog(false),
+                () -> openCatalog(0),
+                () -> openCatalog(1),
+                () -> openCatalog(2),
                 () -> {
                     // Open cape selection screen
                     if (minecraft != null) {
@@ -686,15 +687,15 @@ public class PlayerSkinMenuScreen extends Screen implements com.onlineskins.mod.
         }
     }
 
-    /** Open the skin library on Crafty ({@code crafty}) or on Ely.by. */
-    private void openCatalog(boolean crafty) {
+    /** Open the skin library on the catalog the picked button names: Crafty, Ely.by or MC Skins. */
+    private void openCatalog(int sourceOrdinal) {
         if (this.minecraft == null) {
             return;
         }
 //? if <26.2 {
-        this.minecraft.setScreen(new ElyByCatalogScreen(this, crafty));
+        this.minecraft.setScreen(new ElyByCatalogScreen(this, sourceOrdinal));
 //?} else {
-        this.minecraft.gui.setScreen(new ElyByCatalogScreen(this, crafty));
+        this.minecraft.gui.setScreen(new ElyByCatalogScreen(this, sourceOrdinal));
 //?}
     }
 

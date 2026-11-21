@@ -33,20 +33,17 @@ public class LinkButtonsPanel extends AbstractWidget {
     private static final ResourceLocation CURSEFORGE_ICON = new ResourceLocation("onlineskins", "textures/gui/curseforge_icon.png");
     private static final ResourceLocation MODRINTH_ICON = new ResourceLocation("onlineskins", "textures/gui/modrinth_icon.png");
     private static final ResourceLocation SETTINGS_ICON = new ResourceLocation("onlineskins", "textures/gui/settings_icon.png");
-    private static final ResourceLocation ELYBY_ICON = new ResourceLocation("onlineskins", "textures/gui/icons/skin_websites.png");
         //?} else {
     private static final ResourceLocation DISCORD_ICON = ResourceLocation.fromNamespaceAndPath("onlineskins", "textures/gui/discord_icon.png");
     private static final ResourceLocation CURSEFORGE_ICON = ResourceLocation.fromNamespaceAndPath("onlineskins", "textures/gui/curseforge_icon.png");
     private static final ResourceLocation MODRINTH_ICON = ResourceLocation.fromNamespaceAndPath("onlineskins", "textures/gui/modrinth_icon.png");
     private static final ResourceLocation SETTINGS_ICON = ResourceLocation.fromNamespaceAndPath("onlineskins", "textures/gui/settings_icon.png");
-    private static final ResourceLocation ELYBY_ICON = ResourceLocation.fromNamespaceAndPath("onlineskins", "textures/gui/icons/skin_websites.png");
         //?}
     //?} else {
     private static final Identifier DISCORD_ICON = Identifier.fromNamespaceAndPath("onlineskins", "textures/gui/discord_icon.png");
     private static final Identifier CURSEFORGE_ICON = Identifier.fromNamespaceAndPath("onlineskins", "textures/gui/curseforge_icon.png");
     private static final Identifier MODRINTH_ICON = Identifier.fromNamespaceAndPath("onlineskins", "textures/gui/modrinth_icon.png");
     private static final Identifier SETTINGS_ICON = Identifier.fromNamespaceAndPath("onlineskins", "textures/gui/settings_icon.png");
-    private static final Identifier ELYBY_ICON = Identifier.fromNamespaceAndPath("onlineskins", "textures/gui/icons/skin_websites.png");
     //?}
 
     // URLs
@@ -56,7 +53,7 @@ public class LinkButtonsPanel extends AbstractWidget {
 
     /** The row's width. */
     public static int rowWidth() {
-        return BUTTON_SIZE * 5 + SPACING * 4;
+        return BUTTON_SIZE * 4 + SPACING * 3;
     }
 
     public LinkButtonsPanel(int x, int y) {
@@ -71,32 +68,6 @@ public class LinkButtonsPanel extends AbstractWidget {
         int y = getY();
         int currentX = getX();
 
-        // The Ely.by library opens a catalog browser in game rather than a web page
-        screen.registerForegroundControl(new FieldLinkButton(
-            currentX,
-            y,
-            BUTTON_SIZE,
-            ELYBY_ICON,
-            null,
-            Component.translatable("onlineskins.button.elyby_library")
-        ) {
-            @Override
-            //? if <1.21.9 {
-            public void onPress() {
-            //?} else {
-            public void onPress(net.minecraft.client.input.InputWithModifiers input) {
-            //?}
-                //? if <26.2 {
-                Minecraft.getInstance().setScreen(
-                //?} else {
-                Minecraft.getInstance().gui.setScreen(
-                //?}
-                    new com.onlineskins.mod.client.gui.screen.ElyByCatalogScreen(screen)
-                );
-            }
-        });
-
-        currentX += BUTTON_SIZE + SPACING;
         screen.registerForegroundControl(new FieldLinkButton(
             currentX,
             y,

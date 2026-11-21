@@ -121,6 +121,8 @@ public class ElyByCatalogScreen extends Screen {
     private String prefetchedKey;
     /** The page a prefetch is in flight for, so one page is never fetched twice. */
     private String prefetchingKey;
+    /** Textures of the page read ahead, so its first screen draws at once when the reader turns. */
+    private final Map<Long, byte[]> prefetchedFaces = new HashMap<>();
 
     private Button previousButton;
     private Button nextButton;
@@ -159,10 +161,16 @@ public class ElyByCatalogScreen extends Screen {
 
     /** {@code craftyFirst} picks the catalog the screen opens on; Crafty is the default. */
     public ElyByCatalogScreen(Screen parent, boolean craftyFirst) {
+        this(parent, craftyFirst ? 0 : 1);
+    }
+
+    /** Opens on the catalog at {@code sourceOrdinal} in {@link CatalogSource}: Crafty, Ely.by, MC Skins. */
+    public ElyByCatalogScreen(Screen parent, int sourceOrdinal) {
         super(Component.translatable("onlineskins.elyby.title"));
         this.parent = parent;
-        this.source = craftyFirst ? CatalogSource.CRAFTY : CatalogSource.ELY;
-        this.sortIndex = craftyFirst ? 5 : 0;
+        CatalogSource[] sources = CatalogSource.values();
+        this.source = sources[Math.max(0, Math.min(sourceOrdinal, sources.length - 1))];
+        this.sortIndex = this.source == CatalogSource.CRAFTY ? 5 : 0;
     }
 
     @Override
@@ -317,6 +325,7 @@ public class ElyByCatalogScreen extends Screen {
                             if (key.equals(catalogKey(catalogPage + 1))) {
                                 prefetchedPage = page;
                                 prefetchedKey = key;
+                                prefetchFaces(page, key);
                             }
                         });
                     }
@@ -333,6 +342,34 @@ public class ElyByCatalogScreen extends Screen {
                 });
     }
 
+    /**
+     * Downloads what the page read ahead shows on its first screen, so turning to it draws skins
+     * instead of filling tile by tile. The rest of the page still arrives as it is scrolled to.
+     */
+    private void prefetchFaces(CatalogPage page, String key) {
+        int count = Math.min(perScreen(), page.items.size());
+        for (int index = 0; index < count; index++) {
+            CatalogItem item = page.items.get(index);
+            if (prefetchedFaces.containsKey(item.id)) {
+                continue;
+            }
+            downloadTexture(item)
+                    .thenAccept(bytes -> {
+                        if (this.minecraft != null) {
+                            this.minecraft.execute(() -> {
+                                if (key.equals(prefetchedKey)) {
+                                    prefetchedFaces.put(item.id, bytes);
+                                }
+                            });
+                        }
+                    })
+                    .exceptionally(throwable -> {
+                        // A tile that fails to arrive ahead of time is fetched again when shown.
+                        return null;
+                    });
+        }
+    }
+
     private void loadPage(int page, int targetScreen) {
         loading = true;
         failed = false;
@@ -342,6 +379,7 @@ public class ElyByCatalogScreen extends Screen {
         // A page read ahead belongs to whichever page was next when it was fetched, not to this one.
         prefetchedPage = null;
         prefetchedKey = null;
+        prefetchedFaces.clear();
         screenIndex = 0;
         releaseFaces();
         requested.clear();
@@ -387,6 +425,9 @@ public class ElyByCatalogScreen extends Screen {
             nextButton.active = !loading && (screenIndex < screenCount() - 1 || catalogPage < lastCatalogPage);
         }
         if (windowButton != null) {
+            // Only Crafty's trending orders are measured over a window; the other catalogs never
+            // read it, so the button is not shown to them at all.
+            windowButton.visible = source == CatalogSource.CRAFTY;
             windowButton.active = windowApplies();
         }
     }
@@ -608,6 +649,11 @@ public class ElyByCatalogScreen extends Screen {
 
     private void requestFace(CatalogItem item) {
         if (faces.containsKey(item.id) || !requested.add(item.id)) {
+            return;
+        }
+        byte[] ready = prefetchedFaces.remove(item.id);
+        if (ready != null) {
+            registerFace(item, ready);
             return;
         }
         downloadTexture(item)
