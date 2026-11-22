@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.onlineskins.mod.client.concurrent.ClientIoExecutor;
-import com.onlineskins.mod.platform.PlatformHelper;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 
@@ -14,9 +13,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -146,13 +143,10 @@ public final class ElyByCatalogService {
     /** Download a catalog skin as its original PNG bytes, from the local cache when possible. */
     public CompletableFuture<byte[]> download(String skinUrl) {
         return ClientIoExecutor.supplyAsync(() -> {
-            Path cached = cacheFile(String.valueOf(skinUrl));
-            if (cached != null && Files.isRegularFile(cached)) {
-                try {
-                    return Files.readAllBytes(cached);
-                } catch (IOException unreadable) {
-                    // Fall through to the network below.
-                }
+            Path cached = CatalogCache.fileFor(String.valueOf(skinUrl));
+            byte[] ready = CatalogCache.read(cached);
+            if (ready != null) {
+                return ready;
             }
             URL url;
             try {
@@ -161,33 +155,12 @@ public final class ElyByCatalogService {
                 throw new CatalogException("Untrusted Ely.by skin URL", malformed);
             }
             byte[] body = read(url.toString(), MAX_SKIN_BYTES);
-            if (cached != null) {
-                try {
-                    Files.createDirectories(cached.getParent());
-                    Files.write(cached, body);
-                } catch (IOException unwritable) {
-                    // A cache that cannot be written only costs a download next time.
-                }
+            if (!CatalogCache.isPng(body)) {
+                throw new CatalogException("Ely.by answered something that is not a PNG", null);
             }
+            CatalogCache.write(cached, body);
             return body;
         });
-    }
-
-    /** The cached PNG for a texture URL, inside the instance's own onlineskins folder. */
-    private static Path cacheFile(String skinUrl) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-1")
-                    .digest(skinUrl.getBytes(StandardCharsets.UTF_8));
-            StringBuilder name = new StringBuilder(40);
-            for (byte value : digest) {
-                name.append(Character.forDigit((value >> 4) & 0xF, 16));
-                name.append(Character.forDigit(value & 0xF, 16));
-            }
-            return PlatformHelper.getGameDirectory()
-                    .resolve("onlineskins").resolve("elyby-cache").resolve(name + ".png");
-        } catch (Exception unavailable) {
-            return null;
-        }
     }
 
     private static String string(JsonObject object, String name) {

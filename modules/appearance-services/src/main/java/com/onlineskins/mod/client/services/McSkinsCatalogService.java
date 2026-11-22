@@ -1,7 +1,7 @@
 package com.onlineskins.mod.client.services;
 
 import com.onlineskins.mod.client.concurrent.ClientIoExecutor;
-import com.onlineskins.mod.platform.PlatformHelper;
+import com.onlineskins.mod.platform.QuickSkinInfo;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 
@@ -10,9 +10,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -65,6 +63,21 @@ public final class McSkinsCatalogService {
      * cards with the page before is not enough: a repeat of the opening page is the end too.
      */
     private final Map<Window, List<String>> openingPages = new ConcurrentHashMap<>();
+    /** Reads one listing page's cards; a seam so the failure paths can be exercised. */
+    @FunctionalInterface
+    interface PageReader {
+        List<String> read(String url);
+    }
+
+    private final PageReader pages;
+
+    public McSkinsCatalogService() {
+        this(McSkinsCatalogService::slugsOf);
+    }
+
+    McSkinsCatalogService(PageReader pages) {
+        this.pages = pages;
+    }
 
     /** The site's three 128x128 entries, in the order the screen lists them. */
     public enum Window {
@@ -101,37 +114,68 @@ public final class McSkinsCatalogService {
         int requested = Math.max(1, page);
         Window chosen = window == null ? Window.MONTH : window;
         int first = (requested - 1) * SITE_PAGES_PER_LOGICAL_PAGE + 1;
-        return readSlugs(chosen.pageUrl(first), true).thenCompose(opening -> {
+        return readSlugs(chosen.pageUrl(first)).thenCompose(opening -> {
             if (opening.size() < SITE_PAGE_SIZE) {
-                return CompletableFuture.completedFuture(assemble(requested, chosen, List.of(opening)));
+                return CompletableFuture.completedFuture(
+                        assemble(requested, chosen, List.of(opening), false));
             }
             List<CompletableFuture<List<String>>> rest = new ArrayList<>();
             for (int offset = 1; offset < SITE_PAGES_PER_LOGICAL_PAGE; offset++) {
-                rest.add(readSlugs(chosen.pageUrl(first + offset), false));
+                rest.add(readSlugs(chosen.pageUrl(first + offset)));
             }
             return CompletableFuture.allOf(rest.toArray(new CompletableFuture<?>[0]))
-                    .thenApply(done -> {
-                        List<List<String>> pages = new ArrayList<>(rest.size() + 1);
-                        pages.add(opening);
-                        for (CompletableFuture<List<String>> later : rest) {
-                            pages.add(later.getNow(List.of()));
-                        }
-                        return assemble(requested, chosen, pages);
-                    });
+                    .handle((done, broken) -> joinPages(opening, rest, requested))
+                    .thenCompose(joined -> joined.allFailed()
+                            ? CompletableFuture.<ElyByCatalogService.CatalogPage>failedFuture(
+                                    new ElyByCatalogService.CatalogException(
+                                            "Every mcskins.top listing page failed", null))
+                            : CompletableFuture.completedFuture(
+                                    assemble(requested, chosen, joined.pages(), joined.truncated())));
         });
     }
 
-    /** Reads one listing page's slugs; a page that fails mid-listing only ends the listing. */
-    private static CompletableFuture<List<String>> readSlugs(String url, boolean required) {
-        CompletableFuture<List<String>> future = ClientIoExecutor.supplyAsync(() -> slugsOf(url));
-        return required ? future : future.exceptionally(throwable -> List.of());
+    /** Reads one listing page's cards; a failed read is left for the caller to classify. */
+    private CompletableFuture<List<String>> readSlugs(String url) {
+        return ClientIoExecutor.supplyAsync(() -> pages.read(url));
+    }
+
+    /** The site pages of one logical page, plus how many of the extra reads failed. */
+    private Joined joinPages(List<String> opening, List<CompletableFuture<List<String>>> rest,
+                             int requested) {
+        List<List<String>> joined = new ArrayList<>(rest.size() + 1);
+        joined.add(opening);
+        int failures = 0;
+        boolean truncated = false;
+        for (CompletableFuture<List<String>> later : rest) {
+            if (later.isCompletedExceptionally() || later.isCancelled()) {
+                failures++;
+                truncated = true;
+                continue;
+            }
+            if (truncated) {
+                // A gap makes the later pages non-contiguous with what was read, so drop them.
+                continue;
+            }
+            joined.add(later.getNow(List.of()));
+        }
+        if (failures > 0) {
+            QuickSkinInfo.LOGGER.warn(
+                    "{} of {} further mcskins.top listing pages failed on page {}; showing what arrived",
+                    failures, rest.size(), requested);
+        }
+        return new Joined(joined, truncated, failures == rest.size() && !rest.isEmpty());
+    }
+
+    /** The cards read for one logical page and whether the listing is known to continue. */
+    private record Joined(List<List<String>> pages, boolean truncated, boolean allFailed) {
     }
 
     /**
      * Joins the site pages of one logical page. Each card carries only a slug, so the arm model is
      * decided when its PNG arrives; the entry starts as classic, like a fresh import.
      */
-    private ElyByCatalogService.CatalogPage assemble(int logicalPage, Window window, List<List<String>> pages) {
+    private ElyByCatalogService.CatalogPage assemble(int logicalPage, Window window,
+                                                     List<List<String>> pages, boolean truncated) {
         List<ElyByCatalogService.CatalogItem> items = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         List<String> opening = pages.isEmpty() ? List.of() : pages.get(0);
@@ -169,7 +213,7 @@ public final class McSkinsCatalogService {
             }
         }
         return new ElyByCatalogService.CatalogPage(items, logicalPage,
-                reachedEnd ? logicalPage : logicalPage + 1, items.size());
+                reachedEnd && !truncated ? logicalPage : logicalPage + 1, items.size());
     }
 
     /** The card slugs on one listing page, in page order and without repeats. */
@@ -191,45 +235,21 @@ public final class McSkinsCatalogService {
     public CompletableFuture<byte[]> download(String reference) {
         return ClientIoExecutor.supplyAsync(() -> {
             String slug = reference.startsWith(REF_PREFIX) ? reference.substring(REF_PREFIX.length()) : reference;
-            Path cached = cacheFile(reference);
-            if (cached != null && Files.isRegularFile(cached)) {
-                try {
-                    return Files.readAllBytes(cached);
-                } catch (IOException unreadable) {
-                    // Fall through to the network below.
-                }
+            Path cached = CatalogCache.fileFor(reference);
+            byte[] ready = CatalogCache.read(cached);
+            if (ready != null) {
+                return ready;
             }
             if (!SLUG.matcher(slug).matches()) {
                 throw new ElyByCatalogService.CatalogException("Untrusted mcskins.top texture reference", null);
             }
             byte[] png = read(SKIN_BASE + slug + ".png", MAX_SKIN_BYTES);
-            if (cached != null) {
-                try {
-                    Files.createDirectories(cached.getParent());
-                    Files.write(cached, png);
-                } catch (IOException unwritable) {
-                    // A cache that cannot be written only costs a download next time.
-                }
+            if (!CatalogCache.isPng(png)) {
+                throw new ElyByCatalogService.CatalogException("mcskins.top answered something that is not a PNG", null);
             }
+            CatalogCache.write(cached, png);
             return png;
         });
-    }
-
-    /** The cached PNG for a reference, sharing the folder the other catalog sources use. */
-    private static Path cacheFile(String reference) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-1")
-                    .digest(reference.getBytes(StandardCharsets.UTF_8));
-            StringBuilder name = new StringBuilder(40);
-            for (byte value : digest) {
-                name.append(Character.forDigit((value >> 4) & 0xF, 16));
-                name.append(Character.forDigit(value & 0xF, 16));
-            }
-            return PlatformHelper.getGameDirectory()
-                    .resolve("onlineskins").resolve("elyby-cache").resolve(name + ".png");
-        } catch (Exception unavailable) {
-            return null;
-        }
     }
 
     private static byte[] read(String url, int maximum) {

@@ -9,6 +9,8 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -80,6 +82,47 @@ class ElyByCatalogServiceTest {
         ExecutionException thrown = assertThrows(ExecutionException.class,
                 () -> transport.service.fetchPage(1).get(5, TimeUnit.SECONDS));
         assertInstanceOf(ElyByCatalogService.CatalogException.class, thrown.getCause());
+    }
+
+    @Test
+    void damagedCacheFileIsReplacedByAFreshDownload() throws Exception {
+        Path cache = Files.createTempDirectory("onlineskins-elyby-cache");
+        CatalogCache.useDirectoryForTesting(cache);
+        try {
+            byte[] png = png();
+            String url = "https://ely.by/storage/skins/" + "a".repeat(32) + ".png";
+            var transport = new Transport(new Reply(200, png));
+
+            assertArrayEquals(png, transport.service.download(url).get(5, TimeUnit.SECONDS));
+            Path cached = CatalogCache.fileFor(url);
+            assertNotNull(cached);
+            assertArrayEquals(png, Files.readAllBytes(cached));
+
+            // Damage the cache the way an interrupted older build could have left it.
+            Files.write(cached, "not a png".getBytes(StandardCharsets.US_ASCII));
+
+            assertArrayEquals(png, transport.service.download(url).get(5, TimeUnit.SECONDS));
+            assertEquals(2, transport.urls.size(), "a damaged cache costs exactly one more request");
+            assertArrayEquals(png, Files.readAllBytes(cached));
+        } finally {
+            CatalogCache.useDirectoryForTesting(null);
+        }
+    }
+
+    @Test
+    void nonPngResponseIsExceptional() {
+        var transport = new Transport(new Reply(200, utf8("<html>blocked</html>")));
+        ExecutionException thrown = assertThrows(ExecutionException.class,
+                () -> transport.service.download("https://ely.by/storage/skins/"
+                        + "b".repeat(32) + ".png").get(5, TimeUnit.SECONDS));
+        assertInstanceOf(ElyByCatalogService.CatalogException.class, thrown.getCause());
+    }
+
+    private static byte[] png() {
+        byte[] bytes = new byte[32];
+        byte[] signature = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+        System.arraycopy(signature, 0, bytes, 0, signature.length);
+        return bytes;
     }
 
     private static byte[] utf8(String value) {

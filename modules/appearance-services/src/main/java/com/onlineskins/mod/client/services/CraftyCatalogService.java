@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.onlineskins.mod.client.concurrent.ClientIoExecutor;
-import com.onlineskins.mod.platform.PlatformHelper;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 
@@ -14,9 +13,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashSet;
@@ -168,7 +165,7 @@ public final class CraftyCatalogService {
                 String hash = string(object, "hash");
                 if (!hash.matches("[0-9a-fA-F]{64}")) continue;
                 // The screen treats every item as a texture reference it can download.
-                items.add(new ElyByCatalogService.CatalogItem(hash.hashCode() & 0xFFFFFFFFL,
+                items.add(new ElyByCatalogService.CatalogItem(catalogId(hash),
                         REF_PREFIX + hash, booleanOrFalse(object, "slim"),
                         firstPlayer(object), intOr(object, "players_count", 0)));
             } catch (Exception skipped) {
@@ -176,6 +173,15 @@ public final class CraftyCatalogService {
             }
         }
         return items;
+    }
+
+    /**
+     * The catalog id of a texture hash: the first sixteen hex digits of the 64-character hash,
+     * read as one unsigned 64-bit value. The whole hash is the site's identity, so truncating it
+     * to a 32-bit string hash would let two different skins share one grid entry.
+     */
+    static long catalogId(String hash) {
+        return Long.parseUnsignedLong(hash.substring(0, 16), 16);
     }
 
     private static JsonObject metaOf(JsonObject root) {
@@ -187,13 +193,10 @@ public final class CraftyCatalogService {
     public CompletableFuture<byte[]> download(String reference) {
         return ClientIoExecutor.supplyAsync(() -> {
             String hash = reference.startsWith(REF_PREFIX) ? reference.substring(REF_PREFIX.length()) : reference;
-            Path cached = cacheFile(reference);
-            if (cached != null && Files.isRegularFile(cached)) {
-                try {
-                    return Files.readAllBytes(cached);
-                } catch (IOException unreadable) {
-                    // Fall through to the network below.
-                }
+            Path cached = CatalogCache.fileFor(reference);
+            byte[] ready = CatalogCache.read(cached);
+            if (ready != null) {
+                return ready;
             }
             if (!hash.matches("[0-9a-fA-F]{64}")) {
                 throw new ElyByCatalogService.CatalogException("Untrusted Crafty texture reference", null);
@@ -213,35 +216,13 @@ public final class CraftyCatalogService {
             if (png.length > MAX_SKIN_BYTES) {
                 throw new ElyByCatalogService.CatalogException("Crafty skin too large", null);
             }
-            if (cached != null) {
-                try {
-                    Files.createDirectories(cached.getParent());
-                    Files.write(cached, png);
-                } catch (IOException unwritable) {
-                    // A cache that cannot be written only costs a download next time.
-                }
+            if (!CatalogCache.isPng(png)) {
+                throw new ElyByCatalogService.CatalogException("Crafty answered something that is not a PNG", null);
             }
+            CatalogCache.write(cached, png);
             return png;
         });
     }
-
-    /** The cached PNG for a reference, sharing the folder the Ely.by source already uses. */
-    private static Path cacheFile(String reference) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-1")
-                    .digest(reference.getBytes(StandardCharsets.UTF_8));
-            StringBuilder name = new StringBuilder(40);
-            for (byte value : digest) {
-                name.append(Character.forDigit((value >> 4) & 0xF, 16));
-                name.append(Character.forDigit(value & 0xF, 16));
-            }
-            return PlatformHelper.getGameDirectory()
-                    .resolve("onlineskins").resolve("elyby-cache").resolve(name + ".png");
-        } catch (Exception unavailable) {
-            return null;
-        }
-    }
-
     private static String string(JsonObject object, String name) {
         JsonElement value = object.get(name);
         if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {

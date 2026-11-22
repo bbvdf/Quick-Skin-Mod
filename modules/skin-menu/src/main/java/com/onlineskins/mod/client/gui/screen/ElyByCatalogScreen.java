@@ -7,6 +7,7 @@ import com.onlineskins.mod.client.services.ElyByCatalogService.CatalogPage;
 import com.onlineskins.mod.client.services.LocalAssetManager;
 import com.onlineskins.mod.client.services.McSkinsCatalogService;
 import com.onlineskins.mod.client.services.PlayerAppearanceService;
+import com.onlineskins.mod.client.concurrent.ClientIoExecutor;
 import com.onlineskins.mod.client.gui.GuiCompat;
 import com.onlineskins.mod.client.gui.util.SkinImporter;
 import com.onlineskins.mod.client.rendering.PlayerModelRenderer;
@@ -46,7 +47,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Browses the public Ely.by skin catalog inside the game.
+ * Browses the public skin catalogs inside the game.
  * <p>
  * The catalog answers 40 entries per page, far more than a readable grid holds, so each catalog
  * page is shown as several screens of three rows. Paging walks those screens first and only
@@ -106,7 +107,10 @@ public class ElyByCatalogScreen extends Screen {
     private final Map<Long, Identifier> faces = new HashMap<>();
     private final Map<Long, int[]> faceSizes = new HashMap<>();
     private final Map<Long, byte[]> faceBytes = new HashMap<>();
-    private final Set<Long> requested = new HashSet<>();
+    /** Page generations, in-flight faces and retry bookkeeping, kept on the main thread. */
+    private final CatalogRequests requests = new CatalogRequests();
+    /** Set once the screen is being replaced, so no late download registers a texture on it. */
+    private boolean closed;
     /** One preview model per entry, reused every frame so a tile costs a draw and not an allocation. */
     private final Map<Long, PreviewPlayerData> previews = new HashMap<>();
     /** Each tile's current {yaw, pitch}, eased toward the pointer every frame. */
@@ -127,6 +131,11 @@ public class ElyByCatalogScreen extends Screen {
     private final Set<Long> prefetching = new HashSet<>();
     /** Screens read ahead: two, so a fast reader still turns into ready skins. */
     private static final int PREFETCH_SCREENS = 2;
+    /**
+     * Textures one prefetch pass may keep in flight. The visible screen is requested first, and
+     * this bound leaves the shared client I/O pool room for those downloads and the catalog reads.
+     */
+    private static final int MAX_PREFETCH_IN_FLIGHT = 8;
 
     private Button previousButton;
     private Button nextButton;
@@ -179,9 +188,10 @@ public class ElyByCatalogScreen extends Screen {
 
     @Override
     protected void init() {
+        closed = false;
         layoutGrid();
-        QuickSkinInfo.LOGGER.info("Ely.by catalog opened at {}x{}, {} columns of {}px, {} per screen",
-                this.width, this.height, columns, tile, perScreen());
+        QuickSkinInfo.LOGGER.info("{} catalog opened at {}x{}, {} columns of {}px, {} per screen",
+                source.label, this.width, this.height, columns, tile, perScreen());
 
         int buttonWidth = 58;
         int step = buttonWidth + 4;
@@ -291,8 +301,11 @@ public class ElyByCatalogScreen extends Screen {
             CatalogPage ready = prefetchedPage;
             prefetchedPage = null;
             prefetchedKey = null;
+            prefetchingKey = null;
+            prefetching.clear();
+            // A page request still in flight belongs to the page being replaced.
+            requests.beginPage();
             releaseFaces();
-            requested.clear();
             acceptPage(ready, targetScreen);
             return;
         }
@@ -319,12 +332,16 @@ public class ElyByCatalogScreen extends Screen {
             return;
         }
         prefetchingKey = key;
+        long generation = requests.generation();
         fetchCatalogPage(next)
                 .thenAccept(page -> {
                     if (this.minecraft != null) {
                         this.minecraft.execute(() -> {
                             if (key.equals(prefetchingKey)) {
                                 prefetchingKey = null;
+                            }
+                            if (closed || !requests.isCurrentGeneration(generation)) {
+                                return;
                             }
                             // Keep it only while it is still the page we would show next.
                             if (key.equals(catalogKey(catalogPage + 1))) {
@@ -371,9 +388,16 @@ public class ElyByCatalogScreen extends Screen {
         if (this.minecraft == null) {
             return;
         }
+        long generation = requests.generation();
         for (int index = from; index < to && index < items.size(); index++) {
+            // The visible screen is requested before any prefetch, and this bound keeps one pass
+            // from filling the shared client I/O queue and delaying the tiles the reader sees.
+            if (prefetching.size() >= MAX_PREFETCH_IN_FLIGHT) {
+                break;
+            }
             CatalogItem item = items.get(index);
-            if (prefetchedFaces.containsKey(item.id) || !prefetching.add(item.id)) {
+            if (faces.containsKey(item.id) || prefetchedFaces.containsKey(item.id)
+                    || !prefetching.add(item.id)) {
                 continue;
             }
             downloadTexture(item)
@@ -381,6 +405,9 @@ public class ElyByCatalogScreen extends Screen {
                         if (this.minecraft != null) {
                             this.minecraft.execute(() -> {
                                 prefetching.remove(item.id);
+                                if (closed || !requests.isCurrentGeneration(generation)) {
+                                    return;
+                                }
                                 if (key == null || key.equals(prefetchedKey)) {
                                     prefetchedFaces.put(item.id, bytes);
                                 }
@@ -398,6 +425,7 @@ public class ElyByCatalogScreen extends Screen {
     }
 
     private void loadPage(int page, int targetScreen) {
+        int request = requests.beginPage();
         loading = true;
         failed = false;
         openMenu = -1;
@@ -406,21 +434,31 @@ public class ElyByCatalogScreen extends Screen {
         // A page read ahead belongs to whichever page was next when it was fetched, not to this one.
         prefetchedPage = null;
         prefetchedKey = null;
+        prefetchingKey = null;
+        prefetching.clear();
         prefetchedFaces.clear();
         screenIndex = 0;
         releaseFaces();
-        requested.clear();
         updatePagingButtons();
         fetchCatalogPage(page)
                 .thenAccept(loaded -> {
                     if (this.minecraft != null) {
-                        this.minecraft.execute(() -> acceptPage(loaded, targetScreen));
+                        this.minecraft.execute(() -> {
+                            if (closed || !requests.isCurrentPage(request)) {
+                                return;
+                            }
+                            acceptPage(loaded, targetScreen);
+                        });
                     }
                 })
                 .exceptionally(throwable -> {
-                    QuickSkinInfo.LOGGER.warn("Unable to load the Ely.by catalog page {}", page, throwable);
+                    QuickSkinInfo.LOGGER.warn("Unable to load the {} catalog page {}",
+                            source.label, page, throwable);
                     if (this.minecraft != null) {
                         this.minecraft.execute(() -> {
+                            if (closed || !requests.isCurrentPage(request)) {
+                                return;
+                            }
                             loading = false;
                             failed = true;
                             updatePagingButtons();
@@ -625,13 +663,19 @@ public class ElyByCatalogScreen extends Screen {
         openMenu = -1;
         sourceButton.setMessage(Component.literal(source.label));
         sortButton.setMessage(sortLabel());
+        // Nothing read for the old catalog may land on the new one.
+        requests.invalidateFaces();
+        prefetchedPage = null;
+        prefetchedKey = null;
+        prefetchingKey = null;
+        prefetching.clear();
+        prefetchedFaces.clear();
         releaseFaces();
         faces.clear();
         faceSizes.clear();
         faceBytes.clear();
         previews.clear();
         angles.clear();
-        requested.clear();
         pageItems = List.of();
         screenIndex = 0;
     }
@@ -674,58 +718,118 @@ public class ElyByCatalogScreen extends Screen {
         }
     }
 
+    /** Asks again for tiles whose failure pause has passed; called once per drawn frame. */
+    private void retryFailedVisibleFaces() {
+        long now = System.nanoTime();
+        for (CatalogItem item : visibleItems()) {
+            if (requests.retryDue(item.id, now)) {
+                requestFace(item);
+            }
+        }
+    }
+
     private void requestFace(CatalogItem item) {
-        if (faces.containsKey(item.id) || !requested.add(item.id)) {
+        long id = item.id;
+        if (faces.containsKey(id) || !requests.beginFace(id, System.nanoTime())) {
             return;
         }
-        byte[] ready = prefetchedFaces.remove(item.id);
-        if (ready != null) {
-            registerFace(item, ready);
-            return;
-        }
-        downloadTexture(item)
-                .thenAccept(bytes -> {
+        long generation = requests.generation();
+        String label = source.label;
+        byte[] ready = prefetchedFaces.remove(id);
+        CompletableFuture<byte[]> bytesFuture = ready != null
+                ? CompletableFuture.completedFuture(ready)
+                : downloadTexture(item);
+        // Normalising and classifying a sheet is bulk work; only the upload stays on this thread.
+        bytesFuture.thenCompose(bytes -> ClientIoExecutor.supplyAsyncRetaining(bytes.length,
+                        () -> decodeFace(item, bytes)))
+                .thenAccept(face -> {
                     if (this.minecraft != null) {
-                        this.minecraft.execute(() -> registerFace(item, bytes));
+                        this.minecraft.execute(() -> registerFace(item, face, generation));
                     }
                 })
                 .exceptionally(throwable -> {
-                    // A missing figure only leaves its tile empty; the rest of the screen still shows.
-                    QuickSkinInfo.LOGGER.debug("Unable to load Ely.by catalog skin {}", item.id, throwable);
+                    // A missing figure only leaves its tile empty; the next screen or retry fills it.
+                    QuickSkinInfo.LOGGER.debug("Unable to load the {} catalog skin {}",
+                            label, item.id, throwable);
+                    if (this.minecraft != null) {
+                        this.minecraft.execute(() -> faceFailed(item, generation));
+                    }
                     return null;
                 });
     }
 
-    private void registerFace(CatalogItem item, byte[] bytes) {
+    /** Normalises one downloaded sheet off the render thread and reads its arm width. */
+    private static Face decodeFace(CatalogItem item, byte[] bytes) {
+        byte[] png = bytes;
+        byte[] normalized = HDTextureProcessor.processHDSkin(new ByteArrayInputStream(bytes), true);
+        if (normalized != null) {
+            png = normalized;
+        }
+        Boolean slim = null;
+        // mcskins.top cards say nothing about arm width, so the sheet itself decides it.
+        if (item.skinUrl.startsWith(McSkinsCatalogService.REF_PREFIX)) {
+            try {
+                slim = "slim".equals(SkinModelDetector.detectSkinModel(SafeImageReader.readSkin(png)));
+            } catch (Exception undetectable) {
+                // The entry keeps the classic arms it started with.
+            }
+        }
+        return new Face(png, slim);
+    }
+
+    private void faceFailed(CatalogItem item, long generation) {
+        if (closed || !requests.isCurrentGeneration(generation)) {
+            return;
+        }
+        requests.failFace(item.id, System.nanoTime());
+    }
+
+    private void registerFace(CatalogItem item, Face face, long generation) {
+        if (closed || !requests.isCurrentGeneration(generation)) {
+            // The page or catalog this download belonged to is gone; its texture is never made.
+            return;
+        }
         long id = item.id;
+        requests.finishFace(id);
         if (faces.containsKey(id)) {
             return;
         }
+        NativeImage image = null;
+        DynamicTexture texture = null;
         try {
-            // A legacy 64x32 sheet samples the wrong rows on a modern model. The import path
-            // normalises one before saving, so the grid must normalise before rendering too.
-            byte[] normalized = HDTextureProcessor.processHDSkin(new ByteArrayInputStream(bytes), true);
-            if (normalized != null) {
-                bytes = normalized;
-            }
-            var image = NativeImage.read(new ByteArrayInputStream(bytes));
-            DynamicTexture texture = MinecraftTextureUploads.create(() -> "onlineskins_elyby_" + id, image);
+            image = NativeImage.read(new ByteArrayInputStream(face.png));
+            int width = image.getWidth();
+            int height = image.getHeight();
+            texture = MinecraftTextureUploads.create(() -> "onlineskins_catalog_" + id, image);
+            // The texture owns the native pixels from here; only a failed upload closes them.
+            image = null;
             Identifier location = Identifier.fromNamespaceAndPath(QuickSkinInfo.MOD_ID, "elyby/" + id);
             Minecraft.getInstance().getTextureManager().register(location, texture);
+            texture = null;
             faces.put(id, location);
-            faceSizes.put(id, new int[]{image.getWidth(), image.getHeight()});
-            faceBytes.put(id, bytes);
-            // mcskins.top cards say nothing about arm width, so the sheet itself decides it.
-            if (item.skinUrl.startsWith(McSkinsCatalogService.REF_PREFIX)) {
-                try {
-                    slimOverrides.put(id,
-                            "slim".equals(SkinModelDetector.detectSkinModel(SafeImageReader.readSkin(bytes))));
-                } catch (Exception undetectable) {
-                    // The entry keeps the classic arms it started with.
-                }
+            faceSizes.put(id, new int[]{width, height});
+            faceBytes.put(id, face.png);
+            if (face.slim != null) {
+                slimOverrides.put(id, face.slim);
             }
         } catch (Exception malformed) {
-            QuickSkinInfo.LOGGER.warn("Unable to register Ely.by catalog skin {}", id, malformed);
+            closeQuietly(texture, image);
+            requests.failFace(id, System.nanoTime());
+            QuickSkinInfo.LOGGER.warn("Unable to register the {} catalog skin {}",
+                    source.label, id, malformed);
+        }
+    }
+
+    /** Releases whichever of the upload's native resources the failed path still owns. */
+    private static void closeQuietly(DynamicTexture texture, NativeImage image) {
+        try {
+            if (texture != null) {
+                texture.close();
+            } else if (image != null) {
+                image.close();
+            }
+        } catch (RuntimeException alreadyReleased) {
+            // Closing twice is harmless; the pixels are gone either way.
         }
     }
 
@@ -798,6 +902,8 @@ public class ElyByCatalogScreen extends Screen {
                     this.height / 2, MUTED_COLOR);
             return;
         }
+        // A tile whose download failed is tried again after its pause, never once per frame.
+        retryFailedVisibleFaces();
 
         int hovered = tileAt(mouseX, mouseY);
         for (int index = 0; index < visible.size(); index++) {
@@ -931,20 +1037,23 @@ public class ElyByCatalogScreen extends Screen {
     /** Download the chosen skin, save it into the local library and put it on the player. */
     private void apply(CatalogItem item) {
         applying = true;
-        QuickSkinInfo.LOGGER.info("Applying Ely.by catalog skin {}", item.id);
+        String label = source.label;
+        QuickSkinInfo.LOGGER.info("Applying {} catalog skin {}", label, item.id);
         // The figure is already downloaded for the grid, so a click never waits on the network
         byte[] cached = faceBytes.get(item.id);
-        var bytesFuture = cached != null
+        CompletableFuture<byte[]> bytesFuture = cached != null
                 ? CompletableFuture.completedFuture(cached)
                 : downloadTexture(item);
-        bytesFuture.thenApply(bytes -> {
+        // Decoding and writing the library file are bulk work; the click only waits for the result.
+        bytesFuture
+                .thenCompose(bytes -> ClientIoExecutor.supplyAsyncRetaining(bytes.length, () -> {
                     try {
                         BufferedImage image = SafeImageReader.readSkin(bytes);
                         return SkinImporter.saveSkinImage(image, importPrefix(item) + item.id);
                     } catch (Exception malformed) {
                         throw new IllegalStateException(malformed);
                     }
-                })
+                }))
                 .orTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
                 .thenAccept(path -> {
                     if (this.minecraft != null) {
@@ -952,7 +1061,7 @@ public class ElyByCatalogScreen extends Screen {
                     }
                 })
                 .exceptionally(throwable -> {
-                    QuickSkinInfo.LOGGER.warn("Unable to import the Ely.by skin {}", item.id, throwable);
+                    QuickSkinInfo.LOGGER.warn("Unable to import the {} skin {}", label, item.id, throwable);
                     if (this.minecraft != null) {
                         this.minecraft.execute(() -> applying = false);
                     }
@@ -963,14 +1072,15 @@ public class ElyByCatalogScreen extends Screen {
     private void finishApply(Path path, CatalogItem item) {
         applying = false;
         if (path == null) {
-            QuickSkinInfo.LOGGER.warn("Unable to save the Ely.by skin {}", item.id);
+            QuickSkinInfo.LOGGER.warn("Unable to save the {} skin {}", source.label, item.id);
             return;
         }
         LocalAssetManager.getInstance().reload();
         String hash = HashUtil.computeFileContentId(path);
         AssetMetadata metadata = hash == null ? null : LocalAssetManager.getInstance().getMetadata(hash);
         if (metadata == null) {
-            QuickSkinInfo.LOGGER.warn("The saved Ely.by skin of {} has no catalogue entry", item.id);
+            QuickSkinInfo.LOGGER.warn("The saved {} skin of {} has no catalogue entry",
+                    source.label, item.id);
             return;
         }
         // Remember the choice even on the title screen, where there is no player to dress yet
@@ -980,8 +1090,11 @@ public class ElyByCatalogScreen extends Screen {
             PlayerAppearanceService.getInstance().applySkin(this.minecraft.player.getUUID(),
                     "local_skin:" + metadata.hash(), isSlim(item) ? "slim" : "classic");
         }
-        QuickSkinInfo.LOGGER.info("Ely.by skin {} imported as {}", item.id, metadata.hash());
-        onClose();
+        QuickSkinInfo.LOGGER.info("{} skin {} imported as {}", source.label, item.id, metadata.hash());
+        if (!closed) {
+            // Leaving the screen after a successful import; a closed screen is already gone.
+            onClose();
+        }
     }
 
     private void drawCenter(
@@ -1027,7 +1140,19 @@ public class ElyByCatalogScreen extends Screen {
 
     @Override
     public void removed() {
+        // Every download still in flight now belongs to a screen that is gone.
+        closed = true;
+        requests.invalidateFaces();
+        prefetchedPage = null;
+        prefetchedKey = null;
+        prefetchingKey = null;
+        prefetching.clear();
+        prefetchedFaces.clear();
         releaseFaces();
         super.removed();
+    }
+
+    /** One downloaded sheet, normalised into the bytes the grid uploads and the arm width it shows. */
+    private record Face(byte[] png, Boolean slim) {
     }
 }
