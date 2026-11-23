@@ -39,7 +39,7 @@ public final class CraftyCatalogService {
      * to talk to the origin directly.
      */
     private static final String CRAFTY_BASE =
-            System.getProperty("onlineskins.craftyBase", "https://cf.bbvdf.cc.cd/c");
+            System.getProperty("onlineskins.craftyBase", "https://crafty.bbvdf.cc.cd/c");
     private static final String LIST_BASE = CRAFTY_BASE + "/api/v2/skins";
     private static final String TRENDING_BASE = CRAFTY_BASE + "/api/v2/skins/trending";
     private static final String SKIN_BASE = CRAFTY_BASE + "/api/v2/skins/";
