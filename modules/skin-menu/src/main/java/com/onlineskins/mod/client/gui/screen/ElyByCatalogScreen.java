@@ -157,7 +157,8 @@ public class ElyByCatalogScreen extends Screen {
     private enum CatalogSource {
         CRAFTY("Crafty", 6),
         ELY("Ely.by", 2),
-        MCSKINS("MC Skins", 3);
+        MCSKINS("MC Skins", 3),
+        MINESKIN("MineSkin", 1);
 
         private final String label;
         private final int orders;
@@ -505,6 +506,10 @@ public class ElyByCatalogScreen extends Screen {
             return Component.translatable(sortIndex == 2 ? "onlineskins.elyby.sort_all"
                     : sortIndex == 1 ? "onlineskins.elyby.sort_week" : "onlineskins.elyby.sort_month");
         }
+        if (source == CatalogSource.MINESKIN) {
+            // MineSkin publishes uploads in time order only; the endpoint offers no other rank.
+            return Component.translatable("onlineskins.elyby.sort_new");
+        }
         switch (sortIndex) {
             case 1:
                 return Component.translatable("onlineskins.elyby.sort_new");
@@ -554,6 +559,9 @@ public class ElyByCatalogScreen extends Screen {
             return List.of(Component.translatable("onlineskins.elyby.sort_month"),
                     Component.translatable("onlineskins.elyby.sort_week"),
                     Component.translatable("onlineskins.elyby.sort_all"));
+        }
+        if (source == CatalogSource.MINESKIN) {
+            return List.of(Component.translatable("onlineskins.elyby.sort_new"));
         }
         return List.of(Component.translatable("onlineskins.elyby.sort_hot"),
                 Component.translatable("onlineskins.elyby.sort_new"),
@@ -682,6 +690,9 @@ public class ElyByCatalogScreen extends Screen {
 
     /** The texture bytes for an entry, from whichever catalog the entry came from. */
     private CompletableFuture<byte[]> downloadTexture(CatalogItem item) {
+        if (item.skinUrl.startsWith(MineSkinCatalogService.REF_PREFIX)) {
+            return MineSkinCatalogService.getInstance().download(item.skinUrl);
+        }
         if (item.skinUrl.startsWith(McSkinsCatalogService.REF_PREFIX)) {
             return McSkinsCatalogService.getInstance().download(item.skinUrl);
         }
@@ -692,6 +703,7 @@ public class ElyByCatalogScreen extends Screen {
 
     /** The local asset name prefix for an entry, so an import says where it came from. */
     private static String importPrefix(CatalogItem item) {
+        if (item.skinUrl.startsWith(MineSkinCatalogService.REF_PREFIX)) return "mineskin-";
         if (item.skinUrl.startsWith(McSkinsCatalogService.REF_PREFIX)) return "mcskins-";
         return item.skinUrl.startsWith(CraftyCatalogService.REF_PREFIX) ? "crafty-" : "elyby-";
     }
@@ -705,6 +717,9 @@ public class ElyByCatalogScreen extends Screen {
             McSkinsCatalogService.Window[] windows = McSkinsCatalogService.Window.values();
             int index = Math.max(0, Math.min(sortIndex, windows.length - 1));
             return McSkinsCatalogService.getInstance().fetchPage(page, windows[index]);
+        }
+        if (source == CatalogSource.MINESKIN) {
+            return MineSkinCatalogService.getInstance().fetchPage(page);
         }
         int index = Math.max(0, Math.min(sortIndex, CRAFTY_ORDERS.length - 1));
         return CraftyCatalogService.getInstance()

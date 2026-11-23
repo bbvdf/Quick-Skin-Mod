@@ -56,6 +56,7 @@ public class ActionButtonsPanel extends AbstractWidget {
     private Button normalWebsiteButton;
     private Button hdWebsiteButton;
     private Button mcSkinsWebsiteButton;
+    private Button mineSkinWebsiteButton;
     private IconButton capeButton;
     private IconButton uploadButton;
     private IconButton comingSoonButton;
@@ -70,6 +71,7 @@ public class ActionButtonsPanel extends AbstractWidget {
         Runnable onCraftyLibrary,
         Runnable onElyByLibrary,
         Runnable onMcSkinsLibrary,
+        Runnable onMineSkinLibrary,
         Runnable onCape,
         Runnable onConfirm,
         Runnable onUpload
@@ -126,7 +128,7 @@ public class ActionButtonsPanel extends AbstractWidget {
         int choiceHeight = ConfirmButton.heightForLabel(CHOICE_LABEL_SCALE);
         int choiceWidth = choiceWidth(screen.getFont());
         int bubbleWidth = bubbleWidth(choiceWidth);
-        int bubbleHeight = 3 * choiceHeight + 2 * SPACING + 2 * BUBBLE_PADDING;
+        int bubbleHeight = 4 * choiceHeight + 3 * SPACING + 2 * BUBBLE_PADDING;
         int pointerY = layout.waistY() + ICON_FACE_MIDDLE;
         int bubbleX = websitesX - POINTER_GAP - bubbleWidth;
         int bubbleY = pointerY - bubbleHeight / 2 + 1;
@@ -168,6 +170,17 @@ public class ActionButtonsPanel extends AbstractWidget {
         mcSkinsWebsiteButton.setTooltip(Tooltip.create(Component.translatable("onlineskins.button.website_mcskins")));
         screen.registerForegroundControl(mcSkinsWebsiteButton);
 
+        mineSkinWebsiteButton = new ConfirmButton(
+            choiceX, choiceY + 3 * (choiceHeight + SPACING), choiceWidth, choiceHeight,
+            Component.translatable("onlineskins.button.website_mineskin"),
+            button -> {
+                setWebsitesOpen(false);
+                callbacks.onMineSkinLibrary().run();
+            }
+        );
+        mineSkinWebsiteButton.setTooltip(Tooltip.create(Component.translatable("onlineskins.button.website_mineskin")));
+        screen.registerForegroundControl(mineSkinWebsiteButton);
+
         capeButton = new IconButton(
             layout.rightX() + rightBulge, layout.waistY(), ICON_BUTTON_SIZE, "cape",
             Component.translatable("onlineskins.button.cape"),
@@ -206,6 +219,8 @@ public class ActionButtonsPanel extends AbstractWidget {
         hdWebsiteButton.active = open;
         mcSkinsWebsiteButton.visible = open;
         mcSkinsWebsiteButton.active = open;
+        mineSkinWebsiteButton.visible = open;
+        mineSkinWebsiteButton.active = open;
     }
 
     /**
@@ -253,7 +268,7 @@ public class ActionButtonsPanel extends AbstractWidget {
     /** Every button this panel places, for keeping the model from taking their clicks. */
     public java.util.List<Button> buttons() {
         return java.util.List.of(bodyWidthButton, uploadButton, websitesButton,
-                normalWebsiteButton, hdWebsiteButton, mcSkinsWebsiteButton, capeButton,
+                normalWebsiteButton, hdWebsiteButton, mcSkinsWebsiteButton, mineSkinWebsiteButton, capeButton,
                 comingSoonButton, confirmButton);
     }
 
@@ -267,14 +282,16 @@ public class ActionButtonsPanel extends AbstractWidget {
         return bubbleWidth(choiceWidth(font)) + POINTER_GAP + ICON_BUTTON_SIZE;
     }
 
-    /** The width of the website choices: the wider of the three labels at full size. */
+    /** The width of the website choices: the wider of the four labels at full size. */
     private static int choiceWidth(net.minecraft.client.gui.Font font) {
         int choiceHeight = ConfirmButton.heightForLabel(CHOICE_LABEL_SCALE);
         return Math.max(
                 ConfirmButton.fittingWidth(font, Component.translatable("onlineskins.button.website_crafty"), choiceHeight),
                 Math.max(
                         ConfirmButton.fittingWidth(font, Component.translatable("onlineskins.button.website_elyby"), choiceHeight),
-                        ConfirmButton.fittingWidth(font, Component.translatable("onlineskins.button.website_mcskins"), choiceHeight)));
+                        Math.max(
+                                ConfirmButton.fittingWidth(font, Component.translatable("onlineskins.button.website_mcskins"), choiceHeight),
+                                ConfirmButton.fittingWidth(font, Component.translatable("onlineskins.button.website_mineskin"), choiceHeight))));
     }
 
     private static int bubbleWidth(int choiceWidth) {

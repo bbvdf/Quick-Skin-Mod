@@ -541,6 +541,7 @@ public class PlayerSkinMenuScreen extends Screen implements com.onlineskins.mod.
                 () -> openCatalog(0),
                 () -> openCatalog(1),
                 () -> openCatalog(2),
+                () -> openCatalog(3),
                 () -> {
                     // Open cape selection screen
                     if (minecraft != null) {
