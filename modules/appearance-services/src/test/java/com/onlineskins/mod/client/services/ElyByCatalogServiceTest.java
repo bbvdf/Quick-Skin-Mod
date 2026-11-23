@@ -34,9 +34,10 @@ class ElyByCatalogServiceTest {
 
         var page = transport.service.fetchPage(3).get(5, TimeUnit.SECONDS);
 
-        assertEquals("https://ely.by/api/legacy/skins?page=3", transport.urls.get(0));
+        assertEquals("https://ely.by/api/legacy/skins?page=5", transport.urls.get(0),
+                "shown page 3 starts at the fifth site page");
         assertEquals(3, page.page);
-        assertEquals(250, page.lastPage);
+        assertEquals(125, page.lastPage, "two site pages make one shown page");
         assertEquals(10000, page.totalItems);
         assertEquals(2, page.items.size(), "the foreign host is skipped, the rest of the page stays");
         assertEquals(1, page.items.get(0).id);
@@ -49,11 +50,56 @@ class ElyByCatalogServiceTest {
     }
 
     @Test
+    void adultTaggedEntriesAreSkipped() throws Exception {
+        String body = "{\"items\":["
+                + skin(1, "18+", "Nude") + ","
+                + skin(2, "Cat") + ","
+                + skin(3, "NSFW") + ","
+                + skin(4)
+                + "],\"total_items\":4,\"current\":1,\"last\":1}";
+        var transport = new Transport(new Reply(200, utf8(body)));
+
+        var page = transport.service.fetchPage(1).get(5, TimeUnit.SECONDS);
+
+        assertEquals(2, page.items.size(), "entries tagged adult are left out");
+        assertEquals(2, page.items.get(0).id);
+        assertEquals(4, page.items.get(1).id, "an untagged entry stays");
+    }
+
+    @Test
+    void aShortPageIsToppedUpFromTheNextSitePage() throws Exception {
+        StringBuilder first = new StringBuilder();
+        for (int id = 1; id <= 40; id++) {
+            if (first.length() > 0) first.append(',');
+            // Every tenth skin is adult, so this page loses four entries.
+            first.append(id % 10 == 0 ? skin(id, "18+") : skin(id));
+        }
+        StringBuilder second = new StringBuilder();
+        for (int id = 101; id <= 110; id++) {
+            if (second.length() > 0) second.append(',');
+            second.append(skin(id));
+        }
+        String page1 = "{\"items\":[" + first + "],\"total_items\":20000,\"current\":1,\"last\":500}";
+        String page2 = "{\"items\":[" + second + "],\"total_items\":20000,\"current\":2,\"last\":500}";
+        var transport = new Transport(url -> new Reply(200,
+                utf8(url.endsWith("page=1") ? page1 : page2)));
+
+        var page = transport.service.fetchPage(1).get(5, TimeUnit.SECONDS);
+
+        assertEquals(2, transport.urls.size(), "the next site page fills the gap");
+        assertEquals(40, page.items.size(), "a shown page stays a full grid page");
+        assertTrue(page.items.stream().noneMatch(item -> item.id % 10 == 0),
+                "no adult entry came back through the top-up");
+        assertEquals(250, page.lastPage, "500 site pages are 250 shown pages");
+        assertEquals(20000, page.totalItems, "the inventory size still comes from the endpoint");
+    }
+
+    @Test
     void newestOrderRequestsTheTimeSort() throws Exception {
         var transport = new Transport(new Reply(200, utf8(
                 "{\"items\":[],\"total_items\":0,\"current\":1,\"last\":1}")));
         transport.service.fetchPage(2, true).get(5, TimeUnit.SECONDS);
-        assertEquals("https://ely.by/api/legacy/skins?page=2&sort=time", transport.urls.get(0),
+        assertEquals("https://ely.by/api/legacy/skins?page=3&sort=time", transport.urls.get(0),
                 "the catalog only sorts when asked with its own sort=time");
     }
 
@@ -125,6 +171,22 @@ class ElyByCatalogServiceTest {
         return bytes;
     }
 
+    /** One catalog row with a 32-character texture name, as the endpoint answers it. */
+    private static String skin(int id, String... tags) {
+        StringBuilder row = new StringBuilder("{\"id\":").append(id)
+                .append(",\"skin_url\":\"https://ely.by/storage/skins/")
+                .append(String.format("%032d", id)).append(".png\",\"is_slim\":false");
+        if (tags.length > 0) {
+            row.append(",\"tags\":[");
+            for (int index = 0; index < tags.length; index++) {
+                if (index > 0) row.append(',');
+                row.append('"').append(tags[index]).append('"');
+            }
+            row.append(']');
+        }
+        return row.append('}').toString();
+    }
+
     private static byte[] utf8(String value) {
         return value.getBytes(StandardCharsets.UTF_8);
     }
@@ -144,9 +206,13 @@ class ElyByCatalogServiceTest {
         final ElyByCatalogService service;
 
         Transport(Reply reply) {
+            this(url -> reply);
+        }
+
+        Transport(java.util.function.Function<String, Reply> replies) {
             this.service = new ElyByCatalogService(url -> {
                 urls.add(url.toString());
-                return new Connection(url, reply);
+                return new Connection(url, replies.apply(url.toString()));
             });
         }
     }

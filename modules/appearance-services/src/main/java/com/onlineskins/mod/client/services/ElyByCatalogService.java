@@ -15,7 +15,10 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -34,6 +37,21 @@ public final class ElyByCatalogService {
     private static final int MAX_SKIN_BYTES = 1024 * 1024;
     private static final int CONNECT_TIMEOUT_MILLIS = 5_000;
     private static final int READ_TIMEOUT_MILLIS = 15_000;
+    /** Entries the endpoint answers per page, and how many site pages one shown page is built from. */
+    private static final int SITE_PAGE_SIZE = 40;
+    private static final int SITE_PAGES_PER_LOGICAL_PAGE = 2;
+    /**
+     * Tags Ely.by publishers use for adult content. The endpoint ignores every filter parameter, so
+     * the catalog is filtered here instead; an entry carrying any of these is left out. Tags are
+     * matched whole and case-insensitively, so {@code Sexy} and {@code sexy} both count while a
+     * longer word that merely contains one does not.
+     */
+    private static final Set<String> ADULT_TAGS = Set.of(
+            "18+", "nsfw", "nude", "naked", "sex", "sexy", "erotic", "xxx", "onlyfans", "bdsm",
+            "cum", "porn", "pornhub", "hentai", "milf", "fuck", "anal", "topless",
+            "panties", "lingerie", "bikini", "bra", "boobs", "breasts",
+            "vagina", "penis", "pussy", "dick", "cock",
+            "\u0441\u0435\u043a\u0441\u0443\u0430\u043b\u044c\u043d\u044b\u0439", "\u0433\u043e\u043b\u0430\u044f", "\u0433\u043e\u043b\u044b\u0439");
 
     @FunctionalInterface
     interface ConnectionFactory {
@@ -106,38 +124,99 @@ public final class ElyByCatalogService {
     public CompletableFuture<CatalogPage> fetchPage(int page, boolean byTime) {
         int requested = Math.max(1, page);
         return ClientIoExecutor.supplyAsync(() -> {
-            byte[] body = read(CATALOG_BASE + "?page=" + requested + (byTime ? "&sort=time" : ""),
-                    MAX_JSON_BYTES);
-            try {
-                JsonObject root = JsonParser.parseString(new String(body, StandardCharsets.UTF_8))
-                        .getAsJsonObject();
-                JsonElement rowsElement = root.get("items");
-                if (rowsElement == null || !rowsElement.isJsonArray()) {
-                    throw new CatalogException("Malformed Ely.by catalog response", null);
+            int first = (requested - 1) * SITE_PAGES_PER_LOGICAL_PAGE + 1;
+            ServerPage opening = readServerPage(first, byTime);
+            List<CatalogItem> items = new ArrayList<>(SITE_PAGE_SIZE);
+            Set<Long> seen = new HashSet<>();
+            collect(opening, items, seen);
+            int last = opening.lastPage();
+            int total = opening.total();
+            // Adult entries are dropped after the endpoint answers, so a page is topped up from the
+            // next site page instead of showing a short row of tiles.
+            // The endpoint's own row count says whether another page exists; the filtered count is
+            // always smaller, so comparing that would stop topping up early.
+            if (items.size() < SITE_PAGE_SIZE && opening.rawCount() >= SITE_PAGE_SIZE) {
+                try {
+                    ServerPage next = readServerPage(first + 1, byTime);
+                    last = Math.max(last, next.lastPage());
+                    total = Math.max(total, next.total());
+                    collect(next, items, seen);
+                } catch (CatalogException halfRead) {
+                    // Keep what the first page gave; the next visit retries the missing part.
                 }
-                JsonArray rows = rowsElement.getAsJsonArray();
-                List<CatalogItem> items = new ArrayList<>(rows.size());
-                for (JsonElement row : rows) {
-                    if (!row.isJsonObject()) continue;
-                    JsonObject object = row.getAsJsonObject();
-                    // A malformed row must not abort the page: skip it and show the rest.
-                    try {
-                        URL url = MojangApiService.validateTextureUrl(string(object, "skin_url"));
-                        items.add(new CatalogItem(object.get("id").getAsLong(), url.toString(),
-                                booleanOrFalse(object, "is_slim"), firstTag(object),
-                                intOr(object, "count_wearers", 0)));
-                    } catch (Exception skipped) {
-                        // Ignore this row.
-                    }
-                }
-                return new CatalogPage(items, intOr(root, "current", requested),
-                        intOr(root, "last", requested), intOr(root, "total_items", items.size()));
-            } catch (CatalogException failure) {
-                throw failure;
-            } catch (RuntimeException malformed) {
-                throw new CatalogException("Malformed Ely.by catalog response", malformed);
             }
+            if (items.size() > SITE_PAGE_SIZE) {
+                items = new ArrayList<>(items.subList(0, SITE_PAGE_SIZE));
+            }
+            return new CatalogPage(items, requested, logicalLastPage(last), total);
         });
+    }
+
+    /** One site page after the adult filter, plus its raw row count, last page and inventory size. */
+    private record ServerPage(List<CatalogItem> items, int lastPage, int rawCount, int total) {
+    }
+
+    private ServerPage readServerPage(int page, boolean byTime) {
+        byte[] body = read(CATALOG_BASE + "?page=" + page + (byTime ? "&sort=time" : ""),
+                MAX_JSON_BYTES);
+        try {
+            JsonObject root = JsonParser.parseString(new String(body, StandardCharsets.UTF_8))
+                    .getAsJsonObject();
+            JsonElement rowsElement = root.get("items");
+            if (rowsElement == null || !rowsElement.isJsonArray()) {
+                throw new CatalogException("Malformed Ely.by catalog response", null);
+            }
+            JsonArray rows = rowsElement.getAsJsonArray();
+            List<CatalogItem> items = new ArrayList<>(rows.size());
+            for (JsonElement row : rows) {
+                if (!row.isJsonObject()) continue;
+                JsonObject object = row.getAsJsonObject();
+                // A malformed row must not abort the page: skip it and show the rest.
+                try {
+                    if (isAdult(object)) continue;
+                    URL url = MojangApiService.validateTextureUrl(string(object, "skin_url"));
+                    items.add(new CatalogItem(object.get("id").getAsLong(), url.toString(),
+                            booleanOrFalse(object, "is_slim"), firstTag(object),
+                            intOr(object, "count_wearers", 0)));
+                } catch (Exception skipped) {
+                    // Ignore this row.
+                }
+            }
+            return new ServerPage(items, intOr(root, "last", page), rows.size(),
+                    intOr(root, "total_items", rows.size()));
+        } catch (CatalogException failure) {
+            throw failure;
+        } catch (RuntimeException malformed) {
+            throw new CatalogException("Malformed Ely.by catalog response", malformed);
+        }
+    }
+
+    private static void collect(ServerPage page, List<CatalogItem> items, Set<Long> seen) {
+        for (CatalogItem item : page.items()) {
+            if (seen.add(item.id)) {
+                items.add(item);
+            }
+        }
+    }
+
+    /** The shown page number holding the site's last page, since one shown page spans two. */
+    private static int logicalLastPage(int serverLastPage) {
+        return Math.max(1, (serverLastPage + SITE_PAGES_PER_LOGICAL_PAGE - 1) / SITE_PAGES_PER_LOGICAL_PAGE);
+    }
+
+    /** Whether an entry carries a tag Ely.by publishers use for adult content. */
+    private static boolean isAdult(JsonObject row) {
+        JsonElement tags = row.get("tags");
+        if (tags == null || !tags.isJsonArray()) {
+            return false;
+        }
+        for (JsonElement tag : tags.getAsJsonArray()) {
+            if (tag != null && tag.isJsonPrimitive() && tag.getAsJsonPrimitive().isString()
+                    && ADULT_TAGS.contains(tag.getAsString().trim().toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Download a catalog skin as its original PNG bytes, from the local cache when possible. */
