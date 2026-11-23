@@ -6,6 +6,7 @@ import com.onlineskins.mod.client.services.ElyByCatalogService.CatalogItem;
 import com.onlineskins.mod.client.services.ElyByCatalogService.CatalogPage;
 import com.onlineskins.mod.client.services.LocalAssetManager;
 import com.onlineskins.mod.client.services.McSkinsCatalogService;
+import com.onlineskins.mod.client.services.MineSkinCatalogService;
 import com.onlineskins.mod.client.services.PlayerAppearanceService;
 import com.onlineskins.mod.client.concurrent.ClientIoExecutor;
 import com.onlineskins.mod.client.gui.GuiCompat;
