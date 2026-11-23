@@ -33,9 +33,16 @@ import java.util.concurrent.CompletableFuture;
 public final class CraftyCatalogService {
     private static final CraftyCatalogService INSTANCE = new CraftyCatalogService();
 
-    private static final String LIST_BASE = "https://api.crafty.gg/api/v2/skins";
-    private static final String TRENDING_BASE = "https://api.crafty.gg/api/v2/skins/trending";
-    private static final String SKIN_BASE = "https://api.crafty.gg/api/v2/skins/";
+    /**
+     * Base for every Crafty API call. Defaults to the CF/Vercel relay because crafty.gg returns
+     * 403 to mainland-China IPs; pass {@code -Donlineskins.craftyBase=https://api.crafty.gg}
+     * to talk to the origin directly.
+     */
+    private static final String CRAFTY_BASE =
+            System.getProperty("onlineskins.craftyBase", "https://cf.bbvdf.cc.cd/c");
+    private static final String LIST_BASE = CRAFTY_BASE + "/api/v2/skins";
+    private static final String TRENDING_BASE = CRAFTY_BASE + "/api/v2/skins/trending";
+    private static final String SKIN_BASE = CRAFTY_BASE + "/api/v2/skins/";
     /** Marks a reference as Crafty's, so a tile knows which service resolves it. */
     public static final String REF_PREFIX = "crafty:";
     private static final int PAGE_SIZE = 20;
